@@ -177,7 +177,7 @@ const towerTypes = {
     cost: 80,
     range: 120,
     rate: 0.75,
-    damage: 7,
+    damage: 10,
     color: "#34d399",
     slow: 0,
     moveSpeed: 1.6,
@@ -187,7 +187,7 @@ const towerTypes = {
     cost: 85,
     range: 120,
     rate: 1.5,
-    damage: 16,
+    damage: 18,
     color: "#fb7185",
     slow: 0,
     splashRadius: 48,
@@ -511,7 +511,7 @@ function updateEncyclopedia() {
     }
   }
   if (state.infiniteGold) {
-    lines.push("<div><strong>Tower Stats</strong><div>Watch: 40c, 100r, 0.95s, 9 dmg</div><div>Freeze: 70c, 120r, 1.3s, gas slow</div><div>Drone: 80c, 120r, 0.75s, 7 dmg</div><div>Bomb: 85c, 120r, 1.5s, 16 dmg, 48 splash</div><div>Laser: 100c, 160r, 1.6s, 12 dmg, pierce, burn upgrade</div><div>Dart: 75c, 140r, 0.8s, 6 dmg, 10 DPS poison</div><div>Mine: 30c, 28 dmg, 46 splash</div><div>Wall: 10c</div></div>");
+    lines.push("<div><strong>Tower Stats</strong><div>Watch: 40c, 100r, 0.95s, 9 dmg</div><div>Freeze: 70c, 120r, 1.3s, gas slow</div><div>Drone: 80c, 120r, 0.75s, 10 dmg</div><div>Bomb: 85c, 120r, 1.5s, 18 dmg, 48 splash</div><div>Laser: 100c, 160r, 1.6s, 12 dmg, pierce, burn upgrade</div><div>Dart: 75c, 140r, 0.8s, 6 dmg, 10 DPS poison</div><div>Mine: 30c, 28 dmg, 46 splash</div><div>Wall: 10c</div></div>");
     lines.push("<div><strong>Enemy Stats</strong><div>Grunt: base HP 20 + 5*wave, base speed 26 + 2.6*wave</div><div>Speedy: faster version of grunt</div><div>Heavy: 2.4x HP, 0.6x speed</div><div>Boss: 6x HP</div><div>Tiers: +35% HP and +6% speed per tier</div></div>");
   }
   ui.encyclopedia.innerHTML = lines.length > 0 ? lines.join("") : "<div>Encounter enemies to learn about them.</div>";
@@ -913,22 +913,46 @@ function updateUpgradePanel() {
     const tier = Math.min(tower.level, 5);
     const path = tower.upgradePath || 1;
     const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "+50% attack speed",
+      "+50% attack speed",
+      "+10% range",
+      "more speed, slightly less damage",
+      "machine gun",
+    ];
+    const path2Upgrades = [
+      "slightly more damage",
+      "even more damage",
+      "double range",
+      "lots of damage, slower speed",
+      "all towers see hidden",
+    ];
     if (path === 1) {
       upgradeText = [
-        `Tier 1 (Cost ${cost}): +50% attack speed`,
-        `Tier 2 (Cost ${cost}): +50% attack speed`,
-        `Tier 3 (Cost ${cost}): +10% range`,
-        `Tier 4 (Cost ${cost}): more speed, slightly less damage`,
-        `Tier 5 (Cost ${cost}): machine gun`,
+        `Tier 1 (Cost ${cost}): ${path1Upgrades[0]}`,
+        `Tier 2 (Cost ${cost}): ${path1Upgrades[1]}`,
+        `Tier 3 (Cost ${cost}): ${path1Upgrades[2]}`,
+        `Tier 4 (Cost ${cost}): ${path1Upgrades[3]}`,
+        `Tier 5 (Cost ${cost}): ${path1Upgrades[4]}`,
       ][tier - 1] || `Pick a path. Next cost ${cost}.`;
     } else {
       upgradeText = [
-        `Tier 1 (Cost ${cost}): slightly more damage`,
-        `Tier 2 (Cost ${cost}): even more damage`,
-        `Tier 3 (Cost ${cost}): double range`,
-        `Tier 4 (Cost ${cost}): lots of damage, slower speed`,
-        `Tier 5 (Cost ${cost}): all towers see hidden`,
+        `Tier 1 (Cost ${cost}): ${path2Upgrades[0]}`,
+        `Tier 2 (Cost ${cost}): ${path2Upgrades[1]}`,
+        `Tier 3 (Cost ${cost}): ${path2Upgrades[2]}`,
+        `Tier 4 (Cost ${cost}): ${path2Upgrades[3]}`,
+        `Tier 5 (Cost ${cost}): ${path2Upgrades[4]}`,
       ][tier - 1] || `Pick a path. Next cost ${cost}.`;
+    }
+    if (ui.watchPath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
+      ui.watchPath1.textContent = `Path 1 (${p1Tier}/5): ${nextP1}`;
+    }
+    if (ui.watchPath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
+      ui.watchPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
     }
   }
   const burnText = stats.fireDps > 0 ? ` | Burn ${stats.fireDps.toFixed(1)}/s (${stats.fireDuration.toFixed(1)}s)` : "";
@@ -1481,8 +1505,8 @@ function drawPath() {
   ctx.save();
   ctx.lineCap = "round";
 
-  ctx.strokeStyle = lerpColor([56, 189, 248], [168, 85, 247], lossRatio);
-  ctx.lineWidth = 36;
+  ctx.strokeStyle = lerpColor([8, 16, 32], [40, 8, 56], lossRatio);
+  ctx.lineWidth = 40;
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i += 1) {
@@ -1490,8 +1514,8 @@ function drawPath() {
   }
   ctx.stroke();
 
-  ctx.strokeStyle = lerpColor([11, 27, 45], [59, 7, 100], lossRatio);
-  ctx.lineWidth = 26;
+  ctx.strokeStyle = lerpColor([9, 20, 36], [54, 9, 80], lossRatio);
+  ctx.lineWidth = 24;
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i += 1) {
@@ -1499,16 +1523,14 @@ function drawPath() {
   }
   ctx.stroke();
 
-  ctx.strokeStyle = lerpColor([34, 211, 238], [217, 70, 239], lossRatio);
-  ctx.lineWidth = 3;
-  ctx.setLineDash([18, 16]);
+  ctx.strokeStyle = lerpColor([24, 74, 110], [120, 40, 150], lossRatio);
+  ctx.lineWidth = 8;
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i += 1) {
     ctx.lineTo(points[i].x, points[i].y);
   }
   ctx.stroke();
-  ctx.setLineDash([]);
 
   ctx.restore();
 }
@@ -2681,6 +2703,11 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
     event.preventDefault();
     startWave();
+  }
+  if (event.key === "Escape") {
+    if (ui.encyclopediaModal) ui.encyclopediaModal.classList.add("hidden");
+    if (ui.tipsModal) ui.tipsModal.classList.add("hidden");
+    if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
   }
   if (event.key.toLowerCase() === "d") {
     let closest = null;
