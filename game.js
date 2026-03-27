@@ -7,6 +7,7 @@ const ui = {
   lives: document.getElementById("lives"),
   gold: document.getElementById("gold"),
   wave: document.getElementById("wave"),
+  damage: document.getElementById("damage"),
   encyclopedia: document.getElementById("encyclopedia"),
   encyclopediaModal: document.getElementById("encyclopedia-modal"),
   encyclopediaModalContent: document.getElementById("encyclopedia-modal-content"),
@@ -120,6 +121,7 @@ const state = {
   maxLives: 20,
   gold: 80,
   wave: 0,
+  totalDamage: 0,
   placing: null,
   towers: [],
   enemies: [],
@@ -502,6 +504,9 @@ function updateHud() {
   ui.lives.textContent = state.lives;
   ui.gold.textContent = state.infiniteGold ? "∞" : state.gold;
   ui.wave.textContent = state.wave;
+  if (ui.damage) {
+    ui.damage.textContent = Math.round(state.totalDamage || 0);
+  }
   if (ui.buildWall) {
     ui.buildWall.textContent = state.wallsPlaced === 0 ? "Wall (Free)" : "Wall (10)";
   }
@@ -839,6 +844,18 @@ function getEnemyPosition(enemy) {
   return { x: enemy.x, y: enemy.y };
 }
 
+function getMiniDroneOffsets(tower, count) {
+  const offsets = [];
+  if (!count || count <= 0) return offsets;
+  const base = tower.miniAngle || 0;
+  const radius = 18;
+  for (let i = 0; i < count; i += 1) {
+    const angle = base + (i / count) * Math.PI * 2;
+    offsets.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+  }
+  return offsets;
+}
+
 function placeTower(type, x, y) {
   const data = towerTypes[type];
   if (!state.gameStarted) return;
@@ -1035,6 +1052,7 @@ function getTowerStats(tower) {
   let freezeDamage = 0;
   let freezePulseInterval = 0;
   let freezePulseDuration = 0;
+  let freezePulseOnly = false;
   let freezeExposureThreshold = 0;
   let freezeExposureDuration = 0;
   let freezeKnockbackChance = 0;
@@ -1321,6 +1339,7 @@ function getTowerStats(tower) {
           freezePulseInterval = 1.1;
           freezePulseDuration = 0.45;
           freezeDamage = Math.max(freezeDamage, 7);
+          freezePulseOnly = true;
         }
         if (tier >= 4) {
           freezeDamage = Math.max(freezeDamage, 9);
@@ -1338,7 +1357,7 @@ function getTowerStats(tower) {
       const path = tower.upgradePath || 1;
       if (path === 1) {
         if (tier >= 1) {
-          rate *= 0.85;
+          rate *= 0.8;
         }
         if (tier >= 2) {
           rate *= 0.75;
@@ -1346,17 +1365,17 @@ function getTowerStats(tower) {
         if (tier >= 3) {
           projectileSpeed = (projectileSpeed || data.projectileSpeed || 300) * 1.6;
           data.splashRadius += 12;
-          rate *= 0.9;
+          rate *= 0.8;
         }
         if (tier >= 4) {
           bombBurstCount = 6;
-          rate *= 1.25;
+          rate *= 0.65;
         }
         if (tier >= 5) {
           bombBurstCount = 12;
           damage *= 1.35;
           data.splashRadius += 18;
-          rate *= 1.4;
+          rate *= 0.6;
         }
       } else {
         if (tier >= 1) {
@@ -1490,6 +1509,7 @@ function getTowerStats(tower) {
     freezeDamage,
     freezePulseInterval,
     freezePulseDuration,
+    freezePulseOnly,
     freezeExposureThreshold,
     freezeExposureDuration,
     freezeKnockbackChance,
@@ -1560,6 +1580,48 @@ function getTowerDescription(type) {
       return "Overpowered beam that deletes enemies.";
     default:
       return "";
+  }
+}
+
+function applyPathLock(tower) {
+  const tier = Math.min(tower.level || 1, 5);
+  const path = tower.upgradePath || 1;
+  const buttons = [];
+  switch (tower.type) {
+    case "watch":
+      buttons.push({ btn: ui.watchPath1, path: 1 }, { btn: ui.watchPath2, path: 2 });
+      break;
+    case "freeze":
+      buttons.push({ btn: ui.freezePath1, path: 1 }, { btn: ui.freezePath2, path: 2 });
+      break;
+    case "bomb":
+      buttons.push({ btn: ui.bombPath1, path: 1 }, { btn: ui.bombPath2, path: 2 });
+      break;
+    case "dart":
+      buttons.push({ btn: ui.dartPath1, path: 1 }, { btn: ui.dartPath2, path: 2 });
+      break;
+    case "trap":
+      buttons.push({ btn: ui.trapPath1, path: 1 }, { btn: ui.trapPath2, path: 2 });
+      break;
+    case "laser":
+      buttons.push({ btn: ui.laserPath1, path: 1 }, { btn: ui.laserPath2, path: 2 });
+      break;
+    case "flame":
+      buttons.push({ btn: ui.flamePath1, path: 1 }, { btn: ui.flamePath2, path: 2 });
+      break;
+    case "drone":
+      buttons.push({ btn: ui.dronePath1, path: 1 }, { btn: ui.dronePath2, path: 2 });
+      break;
+    default:
+      break;
+  }
+  for (const entry of buttons) {
+    if (entry.btn) entry.btn.disabled = false;
+  }
+  if (tier >= 3) {
+    for (const entry of buttons) {
+      if (entry.btn) entry.btn.disabled = entry.path !== path;
+    }
   }
 }
 
@@ -1887,6 +1949,7 @@ function updateUpgradePanel() {
       ui.trapPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
     }
   }
+  applyPathLock(tower);
   const burnText = stats.fireDps > 0 ? ` | Burn ${stats.fireDps.toFixed(1)}/s (${stats.fireDuration.toFixed(1)}s)` : "";
   const speedText = stats.projectileSpeed ? ` | Shot Spd ${Math.round(stats.projectileSpeed)}` : "";
   const statLine = `Range ${Math.round(stats.range)} | Rate ${stats.rate.toFixed(2)}s | Damage ${Math.round(stats.damage)}${tower.type === "freeze" ? ` | Slow ${stats.slow.toFixed(2)}` : ""}${speedText}${burnText}`;
@@ -2035,6 +2098,7 @@ function emitFreezeGas(tower, enemy, stats) {
       damage: stats.freezeDamage || 0,
       pulseInterval: stats.freezePulseInterval || 0,
       pulseDuration: stats.freezePulseDuration || 0,
+      pulseOnly: stats.freezePulseOnly || false,
       exposureThreshold: stats.freezeExposureThreshold || 0,
       exposureDuration: stats.freezeExposureDuration || 0,
       knockbackChance: stats.freezeKnockbackChance || 0,
@@ -2050,6 +2114,7 @@ function emitFreezeGas(tower, enemy, stats) {
     proj.damage = stats.freezeDamage || 0;
     proj.pulseInterval = stats.freezePulseInterval || 0;
     proj.pulseDuration = stats.freezePulseDuration || 0;
+    proj.pulseOnly = stats.freezePulseOnly || false;
     proj.exposureThreshold = stats.freezeExposureThreshold || 0;
     proj.exposureDuration = stats.freezeExposureDuration || 0;
     proj.knockbackChance = stats.freezeKnockbackChance || 0;
@@ -2116,10 +2181,10 @@ function fireProjectile(tower, enemy, stats) {
     }
     if (miniCount > 0) {
       const miniDamage = damage * (stats.droneMiniDamageMult || 0.7);
-      for (let i = 0; i < miniCount; i += 1) {
-        const angle = (i / miniCount) * Math.PI * 2;
-        const ox = tower.x + Math.cos(angle) * 16;
-        const oy = tower.y + Math.sin(angle) * 16;
+      const offsets = getMiniDroneOffsets(tower, miniCount);
+      for (const offset of offsets) {
+        const ox = tower.x + offset.x;
+        const oy = tower.y + offset.y;
         const mini = {
           type: "drone",
           x: ox,
@@ -2135,6 +2200,7 @@ function fireProjectile(tower, enemy, stats) {
           parentDrone: tower,
         };
         const miniStats = getTowerStats(mini);
+        miniStats.damage = Math.max(1, miniDamage);
         fireProjectile(mini, enemy, miniStats);
       }
     }
@@ -2148,6 +2214,7 @@ function fireProjectile(tower, enemy, stats) {
           x: tower.x,
           y: tower.y,
           target: enemy,
+          targetPos: getEnemyPosition(enemy),
           speed: missileSpeed,
           damage: missileDamage,
           splashRadius: missileSplash,
@@ -2172,6 +2239,7 @@ function fireProjectile(tower, enemy, stats) {
         x: tower.x,
         y: tower.y,
         target: enemy,
+        targetPos: getEnemyPosition(enemy),
         speed: stats.projectileSpeed || data.projectileSpeed || 260,
         damage,
         splashRadius: data.splashRadius,
@@ -2398,8 +2466,7 @@ function updateProjectiles(dt) {
         if (enemy.darkMatter) continue;
         const dist = Math.hypot(enemy.x - proj.x, enemy.y - proj.y);
         if (dist <= proj.radius) {
-          enemy.slowTimer = Math.max(enemy.slowTimer, 1);
-          enemy.slowFactor = Math.max(enemy.slowFactor || 0, proj.slow);
+          let pulseTriggered = false;
           if (!state.nukeSmoke && proj.damage > 0) {
             applyDamage(enemy, proj.damage * dt);
             if (enemy.hp <= 0) {
@@ -2412,7 +2479,13 @@ function updateProjectiles(dt) {
             if ((enemy.freezePulseCooldown || 0) <= 0) {
               enemy.stunTimer = Math.max(enemy.stunTimer || 0, proj.pulseDuration);
               enemy.freezePulseCooldown = proj.pulseInterval;
+              pulseTriggered = true;
             }
+          }
+          const pulseActive = (enemy.stunTimer || 0) > 0 || pulseTriggered;
+          if (!proj.pulseOnly || pulseActive) {
+            enemy.slowTimer = Math.max(enemy.slowTimer, 1);
+            enemy.slowFactor = Math.max(enemy.slowFactor || 0, proj.slow);
           }
           if (proj.exposureThreshold > 0 && proj.exposureDuration > 0) {
             enemy.freezeExposure = (enemy.freezeExposure || 0) + dt;
@@ -2439,8 +2512,11 @@ function updateProjectiles(dt) {
     }
 
     if (proj.kind === "bomb") {
-      if (!proj.target || proj.target.hp <= 0) return false;
-      const targetPos = getEnemyPosition(proj.target);
+      const targetPos = proj.target && proj.target.hp > 0 ? getEnemyPosition(proj.target) : proj.targetPos;
+      if (!targetPos) return false;
+      if (proj.target && proj.target.hp > 0) {
+        proj.targetPos = targetPos;
+      }
       const dx = targetPos.x - proj.x;
       const dy = targetPos.y - proj.y;
       const dist = Math.hypot(dx, dy);
@@ -2468,41 +2544,36 @@ function updateProjectiles(dt) {
           }
         }
         if (proj.clusterCount && proj.clusterCount > 0) {
-          const spawnCluster = (cx, cy, count, damage, radius) => {
+          const spawnClusterBombs = (cx, cy, count, damage, radius, childCount, childDamage, childRadius) => {
             for (let i = 0; i < count; i += 1) {
               const angle = Math.random() * Math.PI * 2;
-              const dist = Math.random() * proj.splashRadius * 0.9;
-              const ex = cx + Math.cos(angle) * dist;
-              const ey = cy + Math.sin(angle) * dist;
-              state.explosions.push({
-                x: ex,
-                y: ey,
-                radius,
-                ttl: 0.28,
-                color: "rgba(251, 113, 133, 0.6)",
+              const spread = Math.random() * proj.splashRadius * 0.9;
+              const ex = cx + Math.cos(angle) * spread;
+              const ey = cy + Math.sin(angle) * spread;
+              state.projectiles.push({
+                kind: "bomb",
+                x: cx,
+                y: cy,
+                targetPos: { x: ex, y: ey },
+                speed: Math.max(140, proj.speed * 1.1),
+                damage,
+                splashRadius: radius,
+                sourceType: proj.sourceType,
+                clusterCount: childCount || 0,
+                clusterDamage: childDamage || 0,
+                clusterRadius: childRadius || 0,
+                clusterChildCount: 0,
+                clusterChildDamage: 0,
+                clusterChildRadius: 0,
               });
-              for (const target of state.enemies) {
-                if (target.hp <= 0) continue;
-                if (target.armored && proj.sourceType !== "bomb") continue;
-                const d = Math.hypot(target.x - ex, target.y - ey);
-                if (d <= radius) {
-                  if (target.armored && proj.sourceType === "bomb") {
-                    applyArmorHit(target);
-                  }
-                  applyDamage(target, damage);
-                  if (target.hp <= 0) {
-                    awardGold(15);
-                  }
-                }
-              }
             }
           };
-          if (proj.clusterChildCount && proj.clusterChildCount > 0) {
-            spawnCluster(targetPos.x, targetPos.y, proj.clusterCount, proj.clusterDamage || proj.damage * 0.5, proj.clusterRadius || proj.splashRadius * 0.6);
-            spawnCluster(targetPos.x, targetPos.y, proj.clusterChildCount * proj.clusterCount, proj.clusterChildDamage || proj.damage * 0.35, proj.clusterChildRadius || proj.splashRadius * 0.45);
-          } else {
-            spawnCluster(targetPos.x, targetPos.y, proj.clusterCount, proj.clusterDamage || proj.damage * 0.5, proj.clusterRadius || proj.splashRadius * 0.6);
-          }
+          const clusterDamage = proj.clusterDamage || proj.damage * 0.5;
+          const clusterRadius = proj.clusterRadius || proj.splashRadius * 0.6;
+          const childCount = proj.clusterChildCount || 0;
+          const childDamage = proj.clusterChildDamage || proj.damage * 0.35;
+          const childRadius = proj.clusterChildRadius || proj.splashRadius * 0.45;
+          spawnClusterBombs(targetPos.x, targetPos.y, proj.clusterCount, clusterDamage, clusterRadius, childCount, childDamage, childRadius);
         }
         return false;
       }
@@ -3023,6 +3094,9 @@ function updateTowers(dt) {
     if (tower.type === "drone" && stats.droneBombRate > 0) {
       tower.bombCooldown = Math.max(0, (tower.bombCooldown || 0) - dt);
     }
+    if (tower.type === "drone" && (stats.droneMiniCount || 0) > 0) {
+      tower.miniAngle = (tower.miniAngle || 0) + dt * 0.9;
+    }
     tower.cooldown = Math.max(0, tower.cooldown - dt);
     const range = stats.range;
     const target = selectTarget(tower, stats);
@@ -3392,7 +3466,11 @@ function applyNukeDamage(x, y, radius) {
 
 function applyDamage(enemy, amount) {
   const multiplier = enemy.embrittleTimer > 0 ? (enemy.embrittleMultiplier || 1) : 1;
-  enemy.hp -= amount * multiplier;
+  if (enemy.hp <= 0) return;
+  const scaled = amount * multiplier;
+  const applied = Math.max(0, Math.min(enemy.hp, scaled));
+  state.totalDamage += applied;
+  enemy.hp -= scaled;
 }
 
 function spawnArmorShatter(x, y, count = 12) {
@@ -3721,6 +3799,32 @@ function drawGrid() {
   }
 }
 
+function drawDroneBody(x, y, scale = 1) {
+  ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+  ctx.beginPath();
+  ctx.arc(x, y, 10 * scale, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(34, 211, 238, 0.7)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(34, 211, 238, 0.8)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 18 * scale, y);
+  ctx.lineTo(x - 8 * scale, y);
+  ctx.moveTo(x + 18 * scale, y);
+  ctx.lineTo(x + 8 * scale, y);
+  ctx.moveTo(x, y - 18 * scale);
+  ctx.lineTo(x, y - 8 * scale);
+  ctx.moveTo(x, y + 18 * scale);
+  ctx.lineTo(x, y + 8 * scale);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(56, 189, 248, 0.75)";
+  ctx.beginPath();
+  ctx.arc(x, y, 3 * scale, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawTowers() {
   for (const tower of state.towers) {
     const data = towerTypes[tower.type];
@@ -3859,29 +3963,15 @@ function drawTowers() {
           ctx.stroke();
         }
         const miniScale = tower.isMini ? 0.65 : 1;
-        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
-        ctx.beginPath();
-        ctx.arc(tower.x, tower.y, 10 * miniScale, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(34, 211, 238, 0.7)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(34, 211, 238, 0.8)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(tower.x - 18 * miniScale, tower.y);
-        ctx.lineTo(tower.x - 8 * miniScale, tower.y);
-        ctx.moveTo(tower.x + 18 * miniScale, tower.y);
-        ctx.lineTo(tower.x + 8 * miniScale, tower.y);
-        ctx.moveTo(tower.x, tower.y - 18 * miniScale);
-        ctx.lineTo(tower.x, tower.y - 8 * miniScale);
-        ctx.moveTo(tower.x, tower.y + 18 * miniScale);
-        ctx.lineTo(tower.x, tower.y + 8 * miniScale);
-        ctx.stroke();
-        ctx.fillStyle = "rgba(56, 189, 248, 0.75)";
-        ctx.beginPath();
-        ctx.arc(tower.x, tower.y, 3 * miniScale, 0, Math.PI * 2);
-        ctx.fill();
+        drawDroneBody(tower.x, tower.y, miniScale);
+        if (!tower.isMini) {
+          const level = tower.level || 1;
+          const miniCount = tower.upgradePath === 2 && level >= 3 ? (level >= 4 ? 2 : 1) : 0;
+          const offsets = getMiniDroneOffsets(tower, miniCount);
+          for (const offset of offsets) {
+            drawDroneBody(tower.x + offset.x, tower.y + offset.y, 0.55);
+          }
+        }
       } else if (tower.type === "bomb") {
         ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
         ctx.beginPath();
@@ -4831,16 +4921,34 @@ if (ui.upgradePanel) {
   });
 }
 
+function canSelectPath(tower, path) {
+  const tier = Math.min(tower.level || 1, 5);
+  const currentPath = tower.upgradePath || 1;
+  if (tier < 3) return true;
+  if (path === currentPath) return true;
+  return false;
+}
+
+function trySelectPath(tower, path) {
+  const tier = Math.min(tower.level || 1, 5);
+  if (tier >= 3 && (tower.upgradePath || 1) !== path) {
+    updateUpgradePanel();
+    return false;
+  }
+  tower.upgradePath = path;
+  if ((tower.level || 1) < 5) {
+    upgradeTower(tower);
+  } else {
+    updateUpgradePanel();
+  }
+  return true;
+}
+
 if (ui.watchPath1) {
   ui.watchPath1.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "watch") return;
-    state.selectedTower.upgradePath = 1;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 1);
   });
 }
 
@@ -4848,12 +4956,7 @@ if (ui.watchPath2) {
   ui.watchPath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "watch") return;
-    state.selectedTower.upgradePath = 2;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 2);
   });
 }
 
@@ -4861,12 +4964,7 @@ if (ui.freezePath1) {
   ui.freezePath1.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "freeze") return;
-    state.selectedTower.upgradePath = 1;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 1);
   });
 }
 
@@ -4874,12 +4972,7 @@ if (ui.freezePath2) {
   ui.freezePath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "freeze") return;
-    state.selectedTower.upgradePath = 2;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 2);
   });
 }
 
@@ -4887,12 +4980,7 @@ if (ui.trapPath1) {
   ui.trapPath1.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "trap") return;
-    state.selectedTower.upgradePath = 1;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 1);
   });
 }
 
@@ -4900,12 +4988,7 @@ if (ui.trapPath2) {
   ui.trapPath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "trap") return;
-    state.selectedTower.upgradePath = 2;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 2);
   });
 }
 
@@ -4913,12 +4996,7 @@ if (ui.bombPath1) {
   ui.bombPath1.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "bomb") return;
-    state.selectedTower.upgradePath = 1;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 1);
   });
 }
 
@@ -4926,12 +5004,7 @@ if (ui.bombPath2) {
   ui.bombPath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "bomb") return;
-    state.selectedTower.upgradePath = 2;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 2);
   });
 }
 
@@ -4939,12 +5012,7 @@ if (ui.dartPath1) {
   ui.dartPath1.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "dart") return;
-    state.selectedTower.upgradePath = 1;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 1);
   });
 }
 
@@ -4952,12 +5020,7 @@ if (ui.dartPath2) {
   ui.dartPath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "dart") return;
-    state.selectedTower.upgradePath = 2;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 2);
   });
 }
 
@@ -4965,12 +5028,7 @@ if (ui.laserPath1) {
   ui.laserPath1.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "laser") return;
-    state.selectedTower.upgradePath = 1;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 1);
   });
 }
 
@@ -4978,12 +5036,7 @@ if (ui.laserPath2) {
   ui.laserPath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "laser") return;
-    state.selectedTower.upgradePath = 2;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 2);
   });
 }
 
@@ -4991,12 +5044,7 @@ if (ui.flamePath1) {
   ui.flamePath1.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "flame") return;
-    state.selectedTower.upgradePath = 1;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 1);
   });
 }
 
@@ -5004,12 +5052,7 @@ if (ui.flamePath2) {
   ui.flamePath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "flame") return;
-    state.selectedTower.upgradePath = 2;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 2);
   });
 }
 
@@ -5017,12 +5060,7 @@ if (ui.dronePath1) {
   ui.dronePath1.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "drone") return;
-    state.selectedTower.upgradePath = 1;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 1);
   });
 }
 
@@ -5030,12 +5068,7 @@ if (ui.dronePath2) {
   ui.dronePath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "drone") return;
-    state.selectedTower.upgradePath = 2;
-    if ((state.selectedTower.level || 1) < 5) {
-      upgradeTower(state.selectedTower);
-    } else {
-      updateUpgradePanel();
-    }
+    trySelectPath(state.selectedTower, 2);
   });
 }
 
@@ -5285,6 +5318,7 @@ function resetGame() {
   state.maxLives = 20;
   state.gold = 80;
   state.wave = 0;
+  state.totalDamage = 0;
   state.placing = null;
   state.towers = [];
   state.enemies = [];
