@@ -57,6 +57,9 @@ const ui = {
   flameUpgradeActions: document.getElementById("flame-upgrade-actions"),
   flamePath1: document.getElementById("flame-path-1"),
   flamePath2: document.getElementById("flame-path-2"),
+  droneUpgradeActions: document.getElementById("drone-upgrade-actions"),
+  dronePath1: document.getElementById("drone-path-1"),
+  dronePath2: document.getElementById("drone-path-2"),
   jasperControls: document.getElementById("jasper-controls"),
   setWave: document.getElementById("set-wave"),
   applyWave: document.getElementById("apply-wave"),
@@ -874,6 +877,9 @@ function placeTower(type, x, y) {
   if (type === "flame") {
     tower.upgradePath = 1;
   }
+  if (type === "drone") {
+    tower.upgradePath = 1;
+  }
   if (data.moveSpeed) {
     tower.baseX = x;
     tower.baseY = y;
@@ -945,6 +951,17 @@ function getTowerStats(tower) {
   let flameRadius = 0;
   let flameArmorMelt = false;
   let flameIgniteAll = false;
+  let canHitStealth = false;
+  let droneGuns = 1;
+  let droneMiniCount = 0;
+  let droneMiniDamageMult = 0.7;
+  let droneMissiles = 0;
+  let droneMissileDamage = 0;
+  let droneMissileSplash = 0;
+  let droneMissileSpeed = 0;
+  let droneBombDamage = 0;
+  let droneBombRadius = 0;
+  let droneBombRate = 0;
 
   if (tower.type === "watch") {
     if (!projectileSpeed) {
@@ -1039,6 +1056,55 @@ function getTowerStats(tower) {
         }
       }
     }
+    if (tower.type === "drone") {
+      const tier = Math.min(level, 5);
+      const path = tower.upgradePath || 1;
+      if (path === 1) {
+        if (tier >= 1) {
+          damage *= 1.25;
+        }
+        if (tier >= 2) {
+          range += 25;
+          canHitStealth = true;
+        }
+        if (tier >= 3) {
+          droneMissiles = 1;
+          droneMissileDamage = damage * 1.2;
+          droneMissileSplash = 38;
+          droneMissileSpeed = 320;
+        }
+        if (tier >= 4) {
+          rate *= 0.8;
+          droneMissileSpeed *= 1.4;
+        }
+        if (tier >= 5) {
+          rate *= 0.55;
+          droneMissileSpeed *= 4;
+          droneMissileSplash = 64;
+        }
+      } else {
+        if (tier >= 1) {
+          rate *= 0.85;
+        }
+        if (tier >= 2) {
+          droneGuns = 2;
+        }
+        if (tier >= 3) {
+          droneMiniCount = 1;
+        }
+        if (tier >= 4) {
+          droneMiniCount = 2;
+          droneGuns = 4;
+          rate *= 0.75;
+        }
+        if (tier >= 5) {
+          rate *= 0.65;
+          droneBombDamage = damage * 2.2;
+          droneBombRadius = 60;
+          droneBombRate = 2.2;
+        }
+      }
+    }
   }
   if (tower.type === "flame") {
     const tier = Math.min(tower.level, 5);
@@ -1073,6 +1139,20 @@ function getTowerStats(tower) {
     }
   }
 
+  if (tower.type !== "drone") {
+    for (const other of state.towers) {
+      if (other.type !== "drone") continue;
+      if ((other.level || 1) < 5) continue;
+      if (other.upgradePath !== 2) continue;
+      if (other.disabled) continue;
+      const dist = Math.hypot(other.x - tower.x, other.y - tower.y);
+      if (dist <= 140) {
+        rate *= 0.85;
+        break;
+      }
+    }
+  }
+
   if (projectileSpeed) {
     projectileSpeed *= 1 + Math.max(0, level - 1) * 0.06;
   }
@@ -1095,6 +1175,17 @@ function getTowerStats(tower) {
     flameRadius,
     flameArmorMelt,
     flameIgniteAll,
+    canHitStealth,
+    droneGuns,
+    droneMiniCount,
+    droneMiniDamageMult,
+    droneMissiles,
+    droneMissileDamage,
+    droneMissileSplash,
+    droneMissileSpeed,
+    droneBombDamage,
+    droneBombRadius,
+    droneBombRate,
   };
 }
 
@@ -1105,7 +1196,7 @@ function getTowerDescription(type) {
     case "freeze":
       return "Gas clouds that spread out and slow enemies.";
     case "drone":
-      return "Mobile tower that chases targets.";
+      return "Mobile tower that chases targets. Upgrade into Missile Drone or Drone Commander.";
     case "bomb":
       return "Explosive shots with splash damage.";
     case "laser":
@@ -1137,6 +1228,7 @@ function updateUpgradePanel() {
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.trapUpgradeActions) ui.trapUpgradeActions.classList.add("hidden");
     if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
+    if (ui.droneUpgradeActions) ui.droneUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
@@ -1152,6 +1244,7 @@ function updateUpgradePanel() {
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
     if (ui.trapUpgradeAction) ui.trapUpgradeAction.classList.add("hidden");
     if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
+    if (ui.droneUpgradeActions) ui.droneUpgradeActions.classList.add("hidden");
     return;
   }
   if (tower.type === "wall" || tower.type === "mine") {
@@ -1161,6 +1254,7 @@ function updateUpgradePanel() {
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
     if (ui.trapUpgradeAction) ui.trapUpgradeAction.classList.add("hidden");
+    if (ui.droneUpgradeActions) ui.droneUpgradeActions.classList.add("hidden");
     return;
   }
   const stats = getTowerStats(tower);
@@ -1174,6 +1268,38 @@ function updateUpgradePanel() {
   }
   if (tower.type === "laser") {
     upgradeText = "Upgrades:\n+damage, +range, faster fire.";
+  }
+  if (tower.type === "drone") {
+    const tier = Math.min(tower.level, 5);
+    const path = tower.upgradePath || 1;
+    const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "better components",
+      "advanced tracking",
+      "missile pod",
+      "smart targeting",
+      "missile drone",
+    ];
+    const path2Upgrades = [
+      "faster shooting",
+      "second gun",
+      "extra drone",
+      "construction",
+      "commander",
+    ];
+    upgradeText = [
+      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
+    ][0];
+    if (ui.dronePath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
+      ui.dronePath1.textContent = `Path 1 (${p1Tier}/5): ${nextP1}`;
+    }
+    if (ui.dronePath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
+      ui.dronePath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
+    }
   }
   if (tower.type === "watch") {
     const tier = Math.min(tower.level, 5);
@@ -1269,6 +1395,9 @@ function updateUpgradePanel() {
   }
   if (ui.flameUpgradeActions) {
     ui.flameUpgradeActions.classList.toggle("hidden", tower.type !== "flame");
+  }
+  if (ui.droneUpgradeActions) {
+    ui.droneUpgradeActions.classList.toggle("hidden", tower.type !== "drone");
   }
   if (ui.upgradeTargetRow) {
     ui.upgradeTargetRow.classList.toggle("hidden", bombMaxed);
@@ -1376,6 +1505,64 @@ function fireProjectile(tower, enemy, stats) {
     : 0;
   if (data.projectileType === "gas") {
     emitFreezeGas(tower, enemy, stats);
+    return;
+  }
+
+  if (sourceType === "drone") {
+    const bulletSpeed = stats.projectileSpeed || data.projectileSpeed || 340;
+    const guns = Math.max(1, stats.droneGuns || 1);
+    const miniCount = stats.droneMiniCount || 0;
+    const fireHoming = (x, y, dmg, speed) => {
+      state.projectiles.push({
+        kind: "homing",
+        x,
+        y,
+        target: enemy,
+        speed,
+        damage: dmg,
+        slow: stats.slow,
+        sourceType,
+        poisonDps: 0,
+        poisonDuration: 0,
+        embrittlementPercent: 0,
+      });
+    };
+    const toTarget = Math.atan2(enemy.y - tower.y, enemy.x - tower.x);
+    const offsetAngle = toTarget + Math.PI / 2;
+    const baseOffset = guns > 1 ? 6 : 0;
+    for (let i = 0; i < guns; i += 1) {
+      const offset = (i - (guns - 1) / 2) * baseOffset;
+      const ox = tower.x + Math.cos(offsetAngle) * offset;
+      const oy = tower.y + Math.sin(offsetAngle) * offset;
+      fireHoming(ox, oy, damage, bulletSpeed);
+    }
+    if (miniCount > 0) {
+      const miniDamage = damage * (stats.droneMiniDamageMult || 0.7);
+      for (let i = 0; i < miniCount; i += 1) {
+        const angle = (i / miniCount) * Math.PI * 2;
+        const ox = tower.x + Math.cos(angle) * 16;
+        const oy = tower.y + Math.sin(angle) * 16;
+        fireHoming(ox, oy, miniDamage, bulletSpeed * 0.95);
+      }
+    }
+    if (stats.droneMissiles > 0) {
+      const missileSpeed = stats.droneMissileSpeed || 280;
+      const missileDamage = stats.droneMissileDamage || damage * 1.1;
+      const missileSplash = stats.droneMissileSplash || 30;
+      for (let i = 0; i < stats.droneMissiles; i += 1) {
+        state.projectiles.push({
+          kind: "bomb",
+          x: tower.x,
+          y: tower.y,
+          target: enemy,
+          speed: missileSpeed,
+          damage: missileDamage,
+          splashRadius: missileSplash,
+          sourceType,
+          armorPierce: true,
+        });
+      }
+    }
     return;
   }
 
@@ -1616,10 +1803,10 @@ function updateProjectiles(dt) {
         });
         for (const enemy of state.enemies) {
           if (enemy.hp <= 0) continue;
-          if (enemy.armored && proj.sourceType !== "bomb") continue;
+          if (enemy.armored && proj.sourceType !== "bomb" && !proj.armorPierce) continue;
           const splashDist = Math.hypot(enemy.x - targetPos.x, enemy.y - targetPos.y);
           if (splashDist <= proj.splashRadius) {
-            if (enemy.armored && proj.sourceType === "bomb") {
+            if (enemy.armored && (proj.sourceType === "bomb" || proj.armorPierce)) {
               applyArmorHit(enemy);
             }
             applyDamage(enemy, proj.damage);
@@ -1644,8 +1831,8 @@ function updateProjectiles(dt) {
     proj.vy = (dy / dist) * proj.speed;
     const step = proj.speed * dt;
     if (dist <= step) {
-      if (!(proj.target.armored && proj.sourceType !== "laser" && proj.sourceType !== "bomb" && proj.sourceType !== "op")) {
-        if (proj.target.armored && (proj.sourceType === "laser" || proj.sourceType === "bomb")) {
+      if (!(proj.target.armored && proj.sourceType !== "laser" && proj.sourceType !== "bomb" && proj.sourceType !== "op" && !proj.armorPierce)) {
+        if (proj.target.armored && (proj.sourceType === "laser" || proj.sourceType === "bomb" || proj.armorPierce)) {
           applyArmorHit(proj.target);
         }
         applyDamage(proj.target, proj.damage);
@@ -2059,7 +2246,7 @@ function selectTarget(tower, stats) {
   const candidates = [];
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
-    if (enemy.stealth && !enemy.revealed && tower.type !== "watch" && tower.type !== "op" && !state.revealStealth) continue;
+    if (enemy.stealth && !enemy.revealed && tower.type !== "watch" && tower.type !== "op" && !state.revealStealth && !stats.canHitStealth) continue;
     const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
     if (dist <= range) {
       candidates.push({ enemy, dist });
@@ -2118,11 +2305,39 @@ function updateTowers(dt) {
       }
       continue;
     }
+    if (tower.type === "drone" && stats.droneBombRate > 0) {
+      tower.bombCooldown = Math.max(0, (tower.bombCooldown || 0) - dt);
+    }
     tower.cooldown = Math.max(0, tower.cooldown - dt);
     const range = stats.range;
     if (tower.cooldown > 0 && tower.type !== "freeze") continue;
     const target = selectTarget(tower, stats);
     if (target) {
+      if (tower.type === "drone" && stats.droneBombRate > 0 && (tower.bombCooldown || 0) <= 0) {
+        const dropX = target.x;
+        const dropY = target.y;
+        state.explosions.push({
+          x: dropX,
+          y: dropY,
+          radius: stats.droneBombRadius,
+          ttl: 0.35,
+          color: "rgba(251, 146, 60, 0.6)",
+        });
+        for (const enemy of state.enemies) {
+          if (enemy.hp <= 0) continue;
+          const dist = Math.hypot(enemy.x - dropX, enemy.y - dropY);
+          if (dist <= stats.droneBombRadius) {
+            if (enemy.armored) {
+              applyArmorHit(enemy);
+            }
+            applyDamage(enemy, stats.droneBombDamage);
+            if (enemy.hp <= 0) {
+              awardGold(15);
+            }
+          }
+        }
+        tower.bombCooldown = stats.droneBombRate;
+      }
       if (tower.type === "freeze") {
         emitFreezeGas(tower, target, stats);
       } else if (tower.type === "flame") {
@@ -3728,6 +3943,32 @@ if (ui.flamePath2) {
   ui.flamePath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "flame") return;
+    state.selectedTower.upgradePath = 2;
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
+  });
+}
+
+if (ui.dronePath1) {
+  ui.dronePath1.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "drone") return;
+    state.selectedTower.upgradePath = 1;
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
+  });
+}
+
+if (ui.dronePath2) {
+  ui.dronePath2.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "drone") return;
     state.selectedTower.upgradePath = 2;
     if ((state.selectedTower.level || 1) < 5) {
       upgradeTower(state.selectedTower);
