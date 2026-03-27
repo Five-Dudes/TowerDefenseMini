@@ -476,14 +476,12 @@ kbd {
   user-select: none;
 }
 
-.title-screen,
-.title-screen * {
-  cursor: pointer;
+.title-screen {
+  cursor: default;
 }
 
 .title-screen * {
   pointer-events: auto;
-  pointer-events: all;
 }
 
 .title-card {
@@ -495,7 +493,6 @@ kbd {
   max-width: 360px;
   box-shadow: 0 20px 50px rgba(2, 6, 23, 0.7);
   pointer-events: auto;
-  pointer-events: all;
   position: relative;
   z-index: 2;
   touch-action: manipulation;
@@ -669,7 +666,6 @@ kbd {
   display: none;
 }
 
-.title-screen button,
 button {
   pointer-events: auto;
 }
