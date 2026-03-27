@@ -1,5 +1,17 @@
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+let booted = false;
+const boot = () => {
+  if (booted) return;
+  const canvas = document.getElementById("game");
+  const titleScreen = document.getElementById("title-screen");
+  if (!canvas || !titleScreen) {
+    requestAnimationFrame(boot);
+    return;
+  }
+  booted = true;
+  const ctx = canvas.getContext("2d");
+  function coalesce(value, fallback) {
+    return value === null || value === undefined ? fallback : value;
+  }
 const nukeImage = new Image();
 nukeImage.src = "./assets/nuke.png";
 const sixSevenImage = new Image();
@@ -455,7 +467,7 @@ function findPath(fromCell, toCell, blocked) {
     let bestKey = null;
     let bestScore = Infinity;
     for (const key of open) {
-      const score = fScore.get(key) ?? Infinity;
+      const score = coalesce(fScore.get(key), Infinity);
       if (score < bestScore) {
         bestScore = score;
         bestKey = key;
@@ -491,8 +503,8 @@ function findPath(fromCell, toCell, blocked) {
       const neighborKey = cellKey(neighbor.cx, neighbor.cy);
       if (blocked.has(neighborKey)) continue;
       const moveCost = preferredPathCells.has(neighborKey) ? 1 : 4;
-      const tentative = (gScore.get(currentKey) ?? Infinity) + moveCost;
-      if (tentative < (gScore.get(neighborKey) ?? Infinity)) {
+      const tentative = coalesce(gScore.get(currentKey), Infinity) + moveCost;
+      if (tentative < coalesce(gScore.get(neighborKey), Infinity)) {
         cameFrom.set(neighborKey, currentKey);
         gScore.set(neighborKey, tentative);
         const h = Math.abs(neighbor.cx - toCell.cx) + Math.abs(neighbor.cy - toCell.cy);
@@ -547,7 +559,7 @@ function cleanupOffPathFloorSpikes() {
       remaining.push(tower);
       continue;
     }
-    awardGold(tower.paidCost ?? towerTypes.floorSpike.cost);
+    awardGold(coalesce(tower.paidCost, towerTypes.floorSpike.cost));
   }
   state.towers = remaining;
 }
@@ -606,7 +618,7 @@ function getWallUpgradeCost(level = 0) {
 
 function sellTower(tower) {
   const data = towerTypes[tower.type];
-  const baseCost = tower.paidCost ?? (data ? data.cost : 0);
+  const baseCost = coalesce(tower.paidCost, data ? data.cost : 0);
   const refund = Math.max(0, Math.floor(baseCost * 0.8));
   if (refund > 0) {
     awardGold(refund);
@@ -882,7 +894,7 @@ function createEnemy(type, options = {}) {
   const baseSpeed = isFast
     ? (state.wave === 1 ? 56 : 60 + state.wave * 2.2)
     : (state.wave === 1 ? 26 : 28 + state.wave * 2.6);
-  let speed = (isHeavy ? baseSpeed * 0.6 : baseSpeed) * (tier === 3 ? 0.75 : tier === 2 ? 0.85 : 1) * ((options.stealth ?? type === "stealth") ? 0.9 : 1);
+  let speed = (isHeavy ? baseSpeed * 0.6 : baseSpeed) * (tier === 3 ? 0.75 : tier === 2 ? 0.85 : 1) * ((coalesce(options.stealth, type === "stealth")) ? 0.9 : 1);
   if (type === "labrat") {
     maxHp *= 0.9;
     speed *= 1.05;
@@ -906,7 +918,7 @@ function createEnemy(type, options = {}) {
   const pathOffset = type === "swarmlet"
     ? { x: (Math.random() - 0.5) * 18, y: (Math.random() - 0.5) * 18 }
     : null;
-  const isStealth = options.stealth ?? type === "stealth";
+  const isStealth = coalesce(options.stealth, type === "stealth");
   const enemy = {
     x: start.x + (pathOffset ? pathOffset.x : 0),
     y: start.y + (pathOffset ? pathOffset.y : 0),
@@ -945,12 +957,12 @@ function createEnemy(type, options = {}) {
     enemy.armorBreakThreshold = 2 + Math.floor(Math.random() * 2);
   }
   if (options.poisoned) {
-    enemy.dotTimer = options.dotTimer ?? 4;
-    enemy.dotDps = options.dotDps ?? (towerTypes.dart?.poisonDps || 8);
+    enemy.dotTimer = coalesce(options.dotTimer, 4);
+    enemy.dotDps = coalesce(options.dotDps, (towerTypes.dart ? towerTypes.dart.poisonDps : undefined) || 8);
   }
   if (options.onFlame) {
-    enemy.burnTimer = options.burnTimer ?? 2.5;
-    enemy.burnDps = options.burnDps ?? (towerTypes.laser?.fireDps || 6);
+    enemy.burnTimer = coalesce(options.burnTimer, 2.5);
+    enemy.burnDps = coalesce(options.burnDps, (towerTypes.laser ? towerTypes.laser.fireDps : undefined) || 6);
   }
   return enemy;
 }
@@ -2268,8 +2280,8 @@ function fireProjectile(tower, enemy, stats) {
   let burstCount = 1;
   let armorWeaken = false;
   if (sourceType === "dart") {
-    poisonDps = stats.dartPoisonDps ?? poisonDps;
-    poisonDuration = stats.dartPoisonDuration ?? poisonDuration;
+    poisonDps = coalesce(stats.dartPoisonDps, poisonDps);
+    poisonDuration = coalesce(stats.dartPoisonDuration, poisonDuration);
     poisonRadius = stats.dartPoisonRadius || 0;
     burstCount = Math.max(1, stats.dartBurstCount || 1);
     embrittlementPercent = Math.max(embrittlementPercent, stats.dartEmbrittlementBonus || 0);
@@ -3433,7 +3445,7 @@ function updateEnemies(dt) {
   }
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0 || !enemy.deadProcessed);
   for (const enemy of state.enemies) {
-    const floorSpikeDamage = towerTypes.floorSpike?.damage || 0;
+    const floorSpikeDamage = (towerTypes.floorSpike ? towerTypes.floorSpike.damage : undefined) || 0;
     if (floorSpikeDamage > 0) {
       for (const spike of state.towers) {
         if (spike.type !== "floorSpike") continue;
@@ -3777,8 +3789,8 @@ function spawnSplitEnemy(parent, tier, overrides = {}) {
     pathIndex: parent.pathIndex,
     slowTimer: 0,
     type: overrides.type || parent.type,
-    armored: overrides.armored ?? parent.armored || false,
-    darkMatter: overrides.darkMatter ?? parent.darkMatter || false,
+    armored: coalesce(overrides.armored, coalesce(parent.armored, false)),
+    darkMatter: coalesce(overrides.darkMatter, coalesce(parent.darkMatter, false)),
     dotTimer: 0,
     dotDps: 0,
     burnTimer: 0,
@@ -3786,19 +3798,19 @@ function spawnSplitEnemy(parent, tier, overrides = {}) {
     embrittleTimer: 0,
     embrittleMultiplier: 1,
     tier,
-    tierFactor: overrides.tierFactor ?? childTierFactor,
-    isBoss: overrides.isBoss ?? false,
+    tierFactor: coalesce(overrides.tierFactor, childTierFactor),
+    isBoss: coalesce(overrides.isBoss, false),
     facing: parent.facing || 0,
-    stealth: overrides.stealth ?? parent.stealth,
-    revealed: overrides.revealed ?? parent.revealed,
-    radioactive: overrides.radioactive ?? parent.radioactive,
+    stealth: coalesce(overrides.stealth, parent.stealth),
+    revealed: coalesce(overrides.revealed, parent.revealed),
+    radioactive: coalesce(overrides.radioactive, parent.radioactive),
     revealTimer: 0,
-    nukeImmune: overrides.nukeImmune ?? parent.nukeImmune,
-    immuneHeat: overrides.immuneHeat ?? parent.immuneHeat,
-    immuneExplosion: overrides.immuneExplosion ?? parent.immuneExplosion,
-    explosionVulnerable: overrides.explosionVulnerable ?? parent.explosionVulnerable,
-    pathOffset: overrides.pathOffset ?? parent.pathOffset,
-    castleDamage: overrides.castleDamage ?? childTierFactor,
+    nukeImmune: coalesce(overrides.nukeImmune, parent.nukeImmune),
+    immuneHeat: coalesce(overrides.immuneHeat, parent.immuneHeat),
+    immuneExplosion: coalesce(overrides.immuneExplosion, parent.immuneExplosion),
+    explosionVulnerable: coalesce(overrides.explosionVulnerable, parent.explosionVulnerable),
+    pathOffset: coalesce(overrides.pathOffset, parent.pathOffset),
+    castleDamage: coalesce(overrides.castleDamage, childTierFactor),
   };
   if (child.armored) {
     child.armorHits = 0;
@@ -4322,7 +4334,7 @@ function drawTowers() {
       ctx.fill();
     }
 
-    const barrelAngle = tower.aimAngle ?? tower.facing ?? 0;
+    const barrelAngle = coalesce(tower.aimAngle, coalesce(tower.facing, 0));
     if (tower.type !== "wall" && tower.type !== "mine" && tower.type !== "floorSpike" && tower.type !== "trap" && tower.type !== "spikeTower") {
       ctx.save();
       ctx.translate(tower.x, tower.y);
@@ -4852,10 +4864,10 @@ function drawExplosions() {
 
 function drawNukeLaunches() {
   for (const launch of state.nukeLaunches) {
-    const x = launch.x ?? launch.start.x;
-    const y = launch.y ?? launch.start.y;
-    const rotation = launch.rotation ?? 0;
-    const scale = launch.scale ?? 1;
+    const x = coalesce(launch.x, launch.start.x);
+    const y = coalesce(launch.y, launch.start.y);
+    const rotation = coalesce(launch.rotation, 0);
+    const scale = coalesce(launch.scale, 1);
     ctx.save();
     if (nukeImage.complete && nukeImage.naturalWidth) {
       const base = 78;
@@ -5266,12 +5278,12 @@ if (ui.nukeButton) {
 
 if (ui.upgradePanel) {
   ui.upgradePanel.addEventListener("mousedown", (event) => {
-    const tag = event.target?.tagName?.toLowerCase();
+    const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : undefined;
     if (tag === "input" || tag === "button" || tag === "select" || tag === "label") return;
     event.preventDefault();
   });
   ui.upgradePanel.addEventListener("click", (event) => {
-    const tag = event.target?.tagName?.toLowerCase();
+    const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : undefined;
     if (tag === "input" || tag === "button" || tag === "select" || tag === "label") return;
     if (state.selectedTower) {
       upgradeTower(state.selectedTower);
@@ -5287,7 +5299,7 @@ if (ui.upgradePanel) {
     if (tower.type === "wall" || tower.type === "mine" || tower.type === "floorSpike") return;
     if (tower.type === "bomb" && (tower.level || 1) >= state.towerLevelCap) return;
     const current = tower.level || 1;
-    const targetRaw = Number.parseInt(ui.upgradeTarget?.value || "1", 10);
+    const targetRaw = Number.parseInt((ui.upgradeTarget ? ui.upgradeTarget.value : undefined) || "1", 10);
     if (!Number.isFinite(targetRaw)) return;
     const delta = Math.max(1, targetRaw);
     const target = Math.min(state.towerLevelCap, current + delta);
@@ -5483,7 +5495,7 @@ if (ui.targetingMode) {
 if (ui.applyWave) {
   ui.applyWave.addEventListener("click", () => {
     if (!state.infiniteGold) return;
-    const value = Number.parseInt(ui.setWave?.value || "1", 10);
+    const value = Number.parseInt((ui.setWave ? ui.setWave.value : undefined) || "1", 10);
     if (!Number.isFinite(value) || value < 1) return;
     state.wave = value - 1;
     state.waveInProgress = false;
@@ -5534,7 +5546,7 @@ if (ui.openEncyclopedia) {
 
 if (ui.closeEncyclopedia) {
   ui.closeEncyclopedia.addEventListener("click", () => {
-    ui.encyclopediaModal?.classList.add("hidden");
+    if (ui.encyclopediaModal) ui.encyclopediaModal.classList.add("hidden");
   });
 }
 
@@ -5553,7 +5565,7 @@ if (ui.encyclopediaModal) {
 
 if (ui.openTips) {
   ui.openTips.addEventListener("click", () => {
-    ui.tipsModal?.classList.remove("hidden");
+    if (ui.tipsModal) ui.tipsModal.classList.remove("hidden");
   });
 }
 
@@ -5562,7 +5574,7 @@ const openTutorialModal = (event) => {
     event.preventDefault();
     event.stopPropagation();
   }
-  ui.tutorialModal?.classList.remove("hidden");
+  if (ui.tutorialModal) ui.tutorialModal.classList.remove("hidden");
 };
 
 if (ui.openTutorial) {
@@ -5572,13 +5584,13 @@ if (ui.openTutorial) {
 
 if (ui.closeTips) {
   ui.closeTips.addEventListener("click", () => {
-    ui.tipsModal?.classList.add("hidden");
+    if (ui.tipsModal) ui.tipsModal.classList.add("hidden");
   });
 }
 
 if (ui.closeTutorial) {
   ui.closeTutorial.addEventListener("click", () => {
-    ui.tutorialModal?.classList.add("hidden");
+    if (ui.tutorialModal) ui.tutorialModal.classList.add("hidden");
   });
 }
 
@@ -5611,13 +5623,13 @@ if (ui.tutorialModal) {
 if (ui.openJasper) {
   ui.openJasper.addEventListener("click", () => {
     if (!state.easterUnlocked) return;
-    ui.jasperModal?.classList.remove("hidden");
+    if (ui.jasperModal) ui.jasperModal.classList.remove("hidden");
   });
 }
 
 if (ui.closeJasper) {
   ui.closeJasper.addEventListener("click", () => {
-    ui.jasperModal?.classList.add("hidden");
+    if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
   });
 }
 
@@ -5637,13 +5649,13 @@ if (ui.jasperModal) {
   if (ui.spawnEnemy) {
     ui.spawnEnemy.addEventListener("click", () => {
       if (!state.infiniteGold) return;
-      const type = ui.spawnEnemyType?.value || "grunt";
-      const count = Math.max(1, Number.parseInt(ui.spawnEnemyCount?.value || "1", 10));
-      const radioactive = Boolean(ui.spawnEnemyRadioactive?.checked);
-      const armored = Boolean(ui.spawnEnemyArmored?.checked);
-      const darkMatter = Boolean(ui.spawnEnemyDarkMatter?.checked);
-      const onFlame = Boolean(ui.spawnEnemyOnFlame?.checked);
-      const poisoned = Boolean(ui.spawnEnemyPoisoned?.checked);
+      const type = (ui.spawnEnemyType ? ui.spawnEnemyType.value : undefined) || "grunt";
+      const count = Math.max(1, Number.parseInt((ui.spawnEnemyCount ? ui.spawnEnemyCount.value : undefined) || "1", 10));
+      const radioactive = Boolean(ui.spawnEnemyRadioactive ? ui.spawnEnemyRadioactive.checked : undefined);
+      const armored = Boolean(ui.spawnEnemyArmored ? ui.spawnEnemyArmored.checked : undefined);
+      const darkMatter = Boolean(ui.spawnEnemyDarkMatter ? ui.spawnEnemyDarkMatter.checked : undefined);
+      const onFlame = Boolean(ui.spawnEnemyOnFlame ? ui.spawnEnemyOnFlame.checked : undefined);
+      const poisoned = Boolean(ui.spawnEnemyPoisoned ? ui.spawnEnemyPoisoned.checked : undefined);
       const stealth = type === "stealth";
       for (let i = 0; i < count; i += 1) {
         if (type === "swarm") {
@@ -5659,7 +5671,6 @@ if (ui.jasperModal) {
     });
   }
 
-const titleScreen = document.getElementById("title-screen");
 const selectDifficulty = (difficulty) => {
   if (difficulty === "easy") {
     state.difficultyMultipliers = { enemyHp: 0.85, enemySpeed: 0.9, gold: 1.2 };
@@ -5670,7 +5681,7 @@ const selectDifficulty = (difficulty) => {
   }
   state.difficulty = difficulty;
   state.gameStarted = true;
-  titleScreen?.classList.add("hidden");
+  if (titleScreen) titleScreen.classList.add("hidden");
   if (ui.gameOver) ui.gameOver.classList.add("hidden");
   updateHud();
 };
@@ -5692,13 +5703,9 @@ if (titleScreen) {
 const handleTitleScreenPointer = (event) => {
   if (!titleScreen || titleScreen.classList.contains("hidden")) return;
   const target = event.target instanceof Element ? event.target : null;
-  let clicked = target;
-  if (event && "clientX" in event && "clientY" in event) {
-    const el = document.elementFromPoint(event.clientX, event.clientY);
-    if (el instanceof Element) clicked = el;
-  }
-  const difficultyButton = clicked?.closest?.("[data-difficulty]");
-  if (difficultyButton) {
+  if (!target) return;
+  const difficultyButton = target.closest("[data-difficulty]");
+  if (difficultyButton && titleScreen.contains(difficultyButton)) {
     event.preventDefault();
     event.stopPropagation();
     const difficulty = difficultyButton.dataset.difficulty;
@@ -5707,14 +5714,14 @@ const handleTitleScreenPointer = (event) => {
     }
     return;
   }
-  const tutorialButton = clicked?.closest?.("#open-tutorial");
-  if (tutorialButton) {
+  const tutorialButton = target.closest("#open-tutorial");
+  if (tutorialButton && titleScreen.contains(tutorialButton)) {
     openTutorialModal(event);
   }
 };
 
-document.addEventListener("pointerup", handleTitleScreenPointer, true);
-document.addEventListener("mousedown", handleTitleScreenPointer, true);
+document.addEventListener("click", handleTitleScreenPointer, true);
+document.addEventListener("pointerdown", handleTitleScreenPointer, true);
 document.addEventListener("touchstart", handleTitleScreenPointer, { capture: true, passive: false });
 
 document.addEventListener("keydown", (event) => {
@@ -6028,3 +6035,10 @@ canvas.addEventListener("auxclick", (event) => {
 recomputeGlobalPath();
 updateHud();
 requestAnimationFrame(loop);
+};
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
