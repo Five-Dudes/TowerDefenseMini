@@ -2051,8 +2051,8 @@ function handleClick(event) {
   if (towersHere.length > 0) {
     const wall = towersHere.find((tower) => tower.type === "wall");
     const nonWall = towersHere.find((tower) => tower.type !== "wall");
-    if (wall && nonWall && state.selectedTower === nonWall) {
-      selected = wall;
+    if (wall && nonWall) {
+      selected = state.selectedTower === wall ? nonWall : wall;
     } else {
       selected = nonWall || wall;
     }
@@ -3188,6 +3188,45 @@ function updateTowers(dt) {
 function updateEnemies(dt) {
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0);
   for (const enemy of state.enemies) {
+    let tookSpikeDamage = false;
+    for (const wall of state.towers) {
+      if (!wall.spiky) continue;
+      const sides = getWallPathSides(wall.x, wall.y);
+      const spikeLen = grid.size - 12;
+      const spikeHalf = 10;
+      if (sides.left) {
+        const edgeX = wall.x - 16;
+        if (enemy.x >= edgeX - spikeLen && enemy.x <= edgeX && Math.abs(enemy.y - wall.y) <= spikeHalf) {
+          tookSpikeDamage = true;
+        }
+      }
+      if (sides.right) {
+        const edgeX = wall.x + 16;
+        if (enemy.x <= edgeX + spikeLen && enemy.x >= edgeX && Math.abs(enemy.y - wall.y) <= spikeHalf) {
+          tookSpikeDamage = true;
+        }
+      }
+      if (sides.up) {
+        const edgeY = wall.y - 16;
+        if (enemy.y >= edgeY - spikeLen && enemy.y <= edgeY && Math.abs(enemy.x - wall.x) <= spikeHalf) {
+          tookSpikeDamage = true;
+        }
+      }
+      if (sides.down) {
+        const edgeY = wall.y + 16;
+        if (enemy.y <= edgeY + spikeLen && enemy.y >= edgeY && Math.abs(enemy.x - wall.x) <= spikeHalf) {
+          tookSpikeDamage = true;
+        }
+      }
+      if (tookSpikeDamage) break;
+    }
+    if (tookSpikeDamage) {
+      applyDamage(enemy, 16 * dt);
+      if (enemy.hp <= 0) {
+        awardGold(15);
+        continue;
+      }
+    }
     if (enemy.slowTimer > 0) {
       enemy.slowTimer -= dt;
     }
