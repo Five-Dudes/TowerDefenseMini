@@ -54,6 +54,9 @@ const ui = {
   trapUpgradeActions: document.getElementById("trap-upgrade-actions"),
   trapPath1: document.getElementById("trap-path-1"),
   trapPath2: document.getElementById("trap-path-2"),
+  laserUpgradeActions: document.getElementById("laser-upgrade-actions"),
+  laserPath1: document.getElementById("laser-path-1"),
+  laserPath2: document.getElementById("laser-path-2"),
   flameUpgradeActions: document.getElementById("flame-upgrade-actions"),
   flamePath1: document.getElementById("flame-path-1"),
   flamePath2: document.getElementById("flame-path-2"),
@@ -883,6 +886,9 @@ function placeTower(type, x, y) {
   if (type === "flame") {
     tower.upgradePath = 1;
   }
+  if (type === "laser") {
+    tower.upgradePath = 1;
+  }
   if (type === "drone") {
     tower.upgradePath = 1;
   }
@@ -957,6 +963,16 @@ function getTowerStats(tower) {
   let flameRadius = 0;
   let flameArmorMelt = false;
   let flameIgniteAll = false;
+  let laserBeamTtl = 0.12;
+  let laserBeamWidth = data.beamWidth || 6;
+  let laserDamageMult = 1;
+  let laserChargeTime = 0;
+  let laserCannonMult = 1;
+  let laserContinuous = false;
+  let laserEnergyMax = 0;
+  let laserEnergyDrain = 0;
+  let laserRechargeTime = 0;
+  let laserStun = 0;
   let canHitStealth = false;
   let droneGuns = 1;
   let droneMiniCount = 0;
@@ -1005,6 +1021,61 @@ function getTowerStats(tower) {
         const bonus = level - unlock;
         fireDps = (data.fireDps || 0) + bonus * 1.2;
         fireDuration = (data.fireDuration || 0) + bonus * 0.25;
+      }
+      const tier = Math.min(level, 5);
+      const path = tower.upgradePath || 1;
+      if (path === 1) {
+        if (tier >= 1) {
+          laserBeamTtl *= 1.6;
+        }
+        if (tier >= 2) {
+          range += 40;
+        }
+        if (tier >= 3) {
+          laserContinuous = true;
+          laserEnergyMax = 3.6;
+          laserEnergyDrain = 1;
+          laserRechargeTime = 3;
+        }
+        if (tier >= 4) {
+          laserDamageMult *= 1.5;
+          fireDps *= 1.35;
+          fireDuration += 0.6;
+          laserEnergyDrain *= 0.75;
+        }
+        if (tier >= 5) {
+          laserDamageMult *= 1.8;
+          fireDps *= 1.7;
+          fireDuration += 1.2;
+          laserBeamTtl *= 1.4;
+          laserEnergyMax *= 1.6;
+          laserRechargeTime = 1;
+        }
+      } else {
+        if (tier >= 1) {
+          laserDamageMult *= 1.25;
+        }
+        if (tier >= 2) {
+          rate *= 0.75;
+        }
+        if (tier >= 3) {
+          laserDamageMult *= 1.35;
+          fireDps *= 1.3;
+          fireDuration += 0.6;
+          laserBeamWidth += 1;
+        }
+        if (tier >= 4) {
+          laserChargeTime = 1;
+          laserCannonMult = 2.6;
+          laserBeamTtl *= 1.4;
+        }
+        if (tier >= 5) {
+          laserChargeTime = 0.9;
+          laserCannonMult = 3.2;
+          laserStun = 0.6;
+          fireDps *= 1.6;
+          fireDuration += 1.2;
+        }
       }
     }
     if (tower.type === "flame") {
@@ -1181,6 +1252,16 @@ function getTowerStats(tower) {
     flameRadius,
     flameArmorMelt,
     flameIgniteAll,
+    laserBeamTtl,
+    laserBeamWidth,
+    laserDamageMult,
+    laserChargeTime,
+    laserCannonMult,
+    laserContinuous,
+    laserEnergyMax,
+    laserEnergyDrain,
+    laserRechargeTime,
+    laserStun,
     canHitStealth,
     droneGuns,
     droneMiniCount,
@@ -1233,6 +1314,7 @@ function updateUpgradePanel() {
     ui.upgradeDetails.textContent = `Trap: ${typeLabel}\n\nDamage ${Math.round(trap.damage)}${radiusText}\n\nTraps cannot be upgraded.`;
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.trapUpgradeActions) ui.trapUpgradeActions.classList.add("hidden");
+    if (ui.laserUpgradeActions) ui.laserUpgradeActions.classList.add("hidden");
     if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
     if (ui.droneUpgradeActions) ui.droneUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
@@ -1249,6 +1331,7 @@ function updateUpgradePanel() {
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
     if (ui.trapUpgradeAction) ui.trapUpgradeAction.classList.add("hidden");
+    if (ui.laserUpgradeActions) ui.laserUpgradeActions.classList.add("hidden");
     if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
     if (ui.droneUpgradeActions) ui.droneUpgradeActions.classList.add("hidden");
     return;
@@ -1260,6 +1343,7 @@ function updateUpgradePanel() {
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
     if (ui.trapUpgradeAction) ui.trapUpgradeAction.classList.add("hidden");
+    if (ui.laserUpgradeActions) ui.laserUpgradeActions.classList.add("hidden");
     if (ui.droneUpgradeActions) ui.droneUpgradeActions.classList.add("hidden");
     return;
   }
@@ -1273,7 +1357,36 @@ function updateUpgradePanel() {
     upgradeText = "Upgrades: stronger slow + longer range.";
   }
   if (tower.type === "laser") {
-    upgradeText = "Upgrades:\n+damage, +range, faster fire.";
+    const tier = Math.min(tower.level, 5);
+    const path = tower.upgradePath || 1;
+    const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "power boost",
+      "telescope",
+      "jump starter",
+      "intense heat",
+      "plasma ray",
+    ];
+    const path2Upgrades = [
+      "damage boost",
+      "larger batteries",
+      "concentrated beam",
+      "energy cannon",
+      "plasma cannon",
+    ];
+    upgradeText = [
+      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
+    ][0];
+    if (ui.laserPath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
+      ui.laserPath1.textContent = `Path 1 (${p1Tier}/5): ${nextP1}`;
+    }
+    if (ui.laserPath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
+      ui.laserPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
+    }
   }
   if (tower.type === "drone") {
     const tier = Math.min(tower.level, 5);
@@ -1398,6 +1511,9 @@ function updateUpgradePanel() {
   }
   if (ui.trapUpgradeActions) {
     ui.trapUpgradeActions.classList.toggle("hidden", tower.type !== "trap");
+  }
+  if (ui.laserUpgradeActions) {
+    ui.laserUpgradeActions.classList.toggle("hidden", tower.type !== "laser");
   }
   if (ui.flameUpgradeActions) {
     ui.flameUpgradeActions.classList.toggle("hidden", tower.type !== "flame");
@@ -1614,8 +1730,9 @@ function fireLaser(tower, enemy, stats, range) {
   const beamLength = range;
   const endX = originX + ux * beamLength;
   const endY = originY + uy * beamLength;
-  const beamWidth = data.beamWidth || 6;
-  const damage = stats.damage + (tower.level - 1) * 2;
+  const beamWidth = stats.laserBeamWidth || data.beamWidth || 6;
+  const baseDamage = stats.damage + (tower.level - 1) * 2;
+  const damage = baseDamage * (stats.laserDamageMult || 1) * (stats.laserCannonMult || 1);
 
   const sourceType = tower.type;
   for (const target of state.enemies) {
@@ -1638,6 +1755,9 @@ function fireLaser(tower, enemy, stats, range) {
       if (stats.fireDps > 0 && stats.fireDuration > 0 && !target.darkMatter) {
         target.burnTimer = Math.max(target.burnTimer, stats.fireDuration);
         target.burnDps = Math.max(target.burnDps, stats.fireDps);
+      }
+      if (stats.laserStun > 0) {
+        target.stunTimer = Math.max(target.stunTimer || 0, stats.laserStun);
       }
       if (sourceType === "op" && data.splashRadius) {
         for (const splash of state.enemies) {
@@ -1673,7 +1793,7 @@ function fireLaser(tower, enemy, stats, range) {
     x2: endX,
     y2: endY,
     width: beamWidth,
-    ttl: 0.12,
+    ttl: stats.laserBeamTtl || 0.12,
     color: data.color,
   });
 }
@@ -2316,8 +2436,46 @@ function updateTowers(dt) {
     }
     tower.cooldown = Math.max(0, tower.cooldown - dt);
     const range = stats.range;
-    if (tower.cooldown > 0 && tower.type !== "freeze") continue;
     const target = selectTarget(tower, stats);
+    if (tower.type === "laser" && stats.laserContinuous) {
+      if (tower.laserOverheatTimer > 0) {
+        tower.laserOverheatTimer = Math.max(0, tower.laserOverheatTimer - dt);
+        if (tower.laserOverheatTimer <= 0) {
+          tower.laserEnergy = stats.laserEnergyMax;
+        }
+        continue;
+      }
+      if (!Number.isFinite(tower.laserEnergy)) {
+        tower.laserEnergy = stats.laserEnergyMax;
+      }
+      if (target && tower.laserEnergy > 0) {
+        fireLaser(tower, target, stats, range);
+        tower.laserEnergy -= stats.laserEnergyDrain * dt;
+        if (tower.laserEnergy <= 0) {
+          tower.laserEnergy = 0;
+          tower.laserOverheatTimer = stats.laserRechargeTime;
+        }
+      }
+      continue;
+    }
+    if (tower.type === "laser" && stats.laserChargeTime > 0) {
+      if (!target) {
+        tower.laserChargeTimer = 0;
+        continue;
+      }
+      if (tower.cooldown > 0) continue;
+      if (tower.laserChargeTimer > 0) {
+        tower.laserChargeTimer -= dt;
+        if (tower.laserChargeTimer <= 0) {
+          fireLaser(tower, target, stats, range);
+          tower.cooldown = stats.rate;
+        }
+      } else {
+        tower.laserChargeTimer = stats.laserChargeTime;
+      }
+      continue;
+    }
+    if (tower.cooldown > 0 && tower.type !== "freeze") continue;
     if (target) {
       if (tower.type === "drone" && stats.droneBombRate > 0 && (tower.bombCooldown || 0) <= 0) {
         const dropX = target.x;
@@ -2396,6 +2554,12 @@ function updateEnemies(dt) {
       applyDamage(enemy, enemy.burnDps * tick);
       if (enemy.hp <= 0) {
         awardGold(15);
+        continue;
+      }
+    }
+    if (enemy.stunTimer > 0) {
+      enemy.stunTimer -= dt;
+      if (enemy.stunTimer > 0) {
         continue;
       }
     }
@@ -3923,6 +4087,32 @@ if (ui.trapPath2) {
   ui.trapPath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "trap") return;
+    state.selectedTower.upgradePath = 2;
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
+  });
+}
+
+if (ui.laserPath1) {
+  ui.laserPath1.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "laser") return;
+    state.selectedTower.upgradePath = 1;
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
+  });
+}
+
+if (ui.laserPath2) {
+  ui.laserPath2.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "laser") return;
     state.selectedTower.upgradePath = 2;
     if ((state.selectedTower.level || 1) < 5) {
       upgradeTower(state.selectedTower);
