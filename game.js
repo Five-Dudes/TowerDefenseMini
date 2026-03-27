@@ -4529,7 +4529,6 @@ if (ui.tutorialModal) {
 
 if (ui.openJasper) {
   ui.openJasper.addEventListener("click", () => {
-    if (!state.infiniteGold) return;
     ui.jasperModal?.classList.remove("hidden");
   });
 }
