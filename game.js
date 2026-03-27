@@ -260,14 +260,14 @@ const towerTypes = {
   },
   flame: {
     cost: 90,
-    range: 80,
-    rate: 0.18,
-    damage: 50,
+    range: 70,
+    rate: 0.22,
+    damage: 28,
     color: "#f97316",
     slow: 0,
     coneAngle: 0.7,
-    burnDps: 18,
-    burnDuration: 3,
+    burnDps: 12,
+    burnDuration: 2.4,
   },
   trap: {
     cost: 95,
@@ -923,7 +923,7 @@ function upgradeTower(tower) {
   if (tower.type === "wall" || tower.type === "mine") return;
   const level = tower.level || 1;
   if (tower.type === "bomb" && level >= 5) return;
-  if (level >= 1000) return;
+  if (level >= 5) return;
   const upgradeCost = getUpgradeCost(tower);
   if (!canAfford(upgradeCost)) {
     flashButton(ui.upgradePanel);
@@ -1020,16 +1020,16 @@ function getTowerStats(tower) {
         }
         if (tier >= 5) {
           flameSpreadDepth = 6;
-          flameSpreadPower = 0.8;
+          flameSpreadPower = 0.75;
           flameSpreadWindow = 1;
-          range += 40;
+          range += 28;
           fireDuration = Math.max(fireDuration, 14);
         }
       } else {
         if (tier >= 1) {
           fireDuration = Math.max(fireDuration, (data.burnDuration || 3) + 1);
         }
-      if (tier >= 2) {
+        if (tier >= 2) {
           flameReveal = true;
           flameRadius = 30;
           flameSpreadDepth = 1;
@@ -1039,12 +1039,12 @@ function getTowerStats(tower) {
           fireDuration = Math.max(fireDuration, (data.burnDuration || 3) * 1.3);
         }
         if (tier >= 4) {
-          fireDps = (data.burnDps || 18) * 1.2;
+          fireDps = (data.burnDps || 12) * 1.2;
           coneAngle = (coneAngle || 0.7) + 0.1;
           flameRadius = Math.max(flameRadius, 60);
         }
         if (tier >= 5) {
-          fireDps = (data.burnDps || 18) * 1.3;
+          fireDps = (data.burnDps || 12) * 1.3;
           coneAngle = (coneAngle || 0.7) + 0.2;
           flameRadius = Math.max(flameRadius, 120);
           flameIgniteAll = true;
@@ -1256,9 +1256,7 @@ function updateUpgradePanel() {
       "exploding mines",
       "super mines",
     ];
-    upgradeText = [
-      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
-    ][0];
+    upgradeText = `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`;
     if (ui.trapPath1) {
       const p1Tier = path === 1 ? tier : 0;
       const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
@@ -1275,7 +1273,7 @@ function updateUpgradePanel() {
   const statLine = `Range ${Math.round(stats.range)} | Rate ${stats.rate.toFixed(2)}s | Damage ${Math.round(stats.damage)}${tower.type === "freeze" ? ` | Slow ${stats.slow.toFixed(2)}` : ""}${speedText}${burnText}`;
   if (bombMaxed) {
     ui.upgradeDetails.textContent = `MAX TIER.\n\n${desc}\n\n${upgradeText}\n\n${statLine}`;
-  } else if ((tower.level || 1) >= 1000) {
+  } else if ((tower.level || 1) >= 5) {
     ui.upgradeDetails.textContent = `MAX TIER.\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
   } else {
     ui.upgradeDetails.textContent = `Next: Tier ${nextTier} (Cost ${upgradeCost}).\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
@@ -1550,7 +1548,7 @@ function fireFlameCone(tower, enemy, stats) {
     if (diff > Math.PI) diff = Math.PI * 2 - diff;
     const inCone = diff <= coneAngle * 0.5;
     const inAura = igniteRadius > 0 && dist <= igniteRadius;
-    if (inCone || inAura || igniteAll) {
+    if ((stats.flameIgniteAll && dist <= range) || inCone || inAura) {
       igniteTarget(target);
       ignited.push(target);
     }
@@ -1585,6 +1583,8 @@ function fireFlameCone(tower, enemy, stats) {
     range,
     spread: coneAngle,
     ttl: 0.12,
+    full: igniteAll || igniteRadius > 0,
+    radius: Math.max(igniteRadius, range),
   });
   spawnNukeEmbers(originX + Math.cos(angle) * 18, originY + Math.sin(angle) * 18, 6);
 }
@@ -1724,12 +1724,20 @@ function updateTraps(dt) {
           }
         }
         if (target) {
-          applyDamage(target, trap.turretDamage);
-          if (trap.dual) {
-            applyDamage(target, trap.turretDamage);
-          }
-          if (target.hp <= 0) {
-            awardGold(15);
+          for (let shot = 0; shot < (trap.dual ? 2 : 1); shot += 1) {
+            state.projectiles.push({
+              kind: "homing",
+              x: trap.x,
+              y: trap.y,
+              target,
+              speed: 320,
+              damage: trap.turretDamage,
+              slow: 0,
+              sourceType: "trap",
+              poisonDps: 0,
+              poisonDuration: 0,
+              embrittlementPercent: 0,
+            });
           }
           trap.cooldown = trap.turretRate;
         }
@@ -1913,7 +1921,7 @@ function getTrapSetterStats(tower) {
     if (tier >= 5) {
       trapType = "sentry";
       turret = true;
-      turretDamage = 18;
+      turretDamage = 8;
       turretRange = 120;
       spawnCount = 2;
       trapLifetime += 75;
@@ -1929,13 +1937,13 @@ function getTrapSetterStats(tower) {
     if (tier >= 4) {
       trapType = "mine";
       explode = true;
-      trapDamage *= 1.2;
+      trapDamage *= 1.25;
     }
     if (tier >= 5) {
       trapType = "supermine";
       explode = true;
-      trapDamage *= 1.5;
-      splashRadius = 70;
+      trapDamage *= 2.2;
+      splashRadius = 90;
       trapLifetime += 125;
     }
   }
@@ -3238,23 +3246,35 @@ function drawNukeParticles() {
 
 function drawFlames() {
   for (const flame of state.flames) {
-    const steps = 6;
-    for (let i = 1; i <= steps; i += 1) {
-      const t = i / steps;
-      const dist = flame.range * t;
-      const jitter = (Math.random() - 0.5) * 0.2;
-      const angle = flame.angle + jitter;
-      const x = flame.x + Math.cos(angle) * dist;
-      const y = flame.y + Math.sin(angle) * dist;
-      const size = 5 + (1 - t) * 6;
-      const grad = ctx.createRadialGradient(x, y, size * 0.2, x, y, size);
-      grad.addColorStop(0, "rgba(255, 153, 85, 0.95)");
-      grad.addColorStop(0.5, "rgba(249, 115, 22, 0.6)");
+    if (flame.full) {
+      const radius = flame.radius || flame.range;
+      const grad = ctx.createRadialGradient(flame.x, flame.y, radius * 0.1, flame.x, flame.y, radius);
+      grad.addColorStop(0, "rgba(255, 153, 85, 0.5)");
+      grad.addColorStop(0.6, "rgba(249, 115, 22, 0.25)");
       grad.addColorStop(1, "rgba(30, 41, 59, 0)");
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.arc(flame.x, flame.y, radius, 0, Math.PI * 2);
       ctx.fill();
+    } else {
+      const steps = 6;
+      for (let i = 1; i <= steps; i += 1) {
+        const t = i / steps;
+        const dist = flame.range * t;
+        const jitter = (Math.random() - 0.5) * 0.2;
+        const angle = flame.angle + jitter;
+        const x = flame.x + Math.cos(angle) * dist;
+        const y = flame.y + Math.sin(angle) * dist;
+        const size = 5 + (1 - t) * 6;
+        const grad = ctx.createRadialGradient(x, y, size * 0.2, x, y, size);
+        grad.addColorStop(0, "rgba(255, 153, 85, 0.95)");
+        grad.addColorStop(0.5, "rgba(249, 115, 22, 0.6)");
+        grad.addColorStop(1, "rgba(30, 41, 59, 0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 }
@@ -3583,7 +3603,7 @@ if (ui.upgradeTo) {
     const current = tower.level || 1;
     const targetRaw = Number.parseInt(ui.upgradeTarget?.value || `${current}`, 10);
     if (!Number.isFinite(targetRaw)) return;
-    const target = Math.max(1, Math.min(1000, targetRaw));
+    const target = Math.max(1, Math.min(5, targetRaw));
     if (target <= current) return;
     const totalCost = getUpgradeCostToLevel(current, target);
     if (!canAfford(totalCost)) {
@@ -3605,7 +3625,11 @@ if (ui.watchPath1) {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "watch") return;
     state.selectedTower.upgradePath = 1;
-    upgradeTower(state.selectedTower);
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
   });
 }
 
@@ -3614,7 +3638,11 @@ if (ui.watchPath2) {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "watch") return;
     state.selectedTower.upgradePath = 2;
-    upgradeTower(state.selectedTower);
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
   });
 }
 
@@ -3623,7 +3651,11 @@ if (ui.trapPath1) {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "trap") return;
     state.selectedTower.upgradePath = 1;
-    upgradeTower(state.selectedTower);
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
   });
 }
 
@@ -3632,7 +3664,11 @@ if (ui.trapPath2) {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "trap") return;
     state.selectedTower.upgradePath = 2;
-    upgradeTower(state.selectedTower);
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
   });
 }
 
@@ -3641,7 +3677,11 @@ if (ui.flamePath1) {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "flame") return;
     state.selectedTower.upgradePath = 1;
-    upgradeTower(state.selectedTower);
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
   });
 }
 
@@ -3650,7 +3690,11 @@ if (ui.flamePath2) {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "flame") return;
     state.selectedTower.upgradePath = 2;
-    upgradeTower(state.selectedTower);
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
   });
 }
 
