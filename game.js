@@ -1,7 +1,7 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const nukeImage = new Image();
-nukeImage.src = "assets/nuke.png";
+nukeImage.src = "./assets/nuke.png";
 
 const ui = {
   lives: document.getElementById("lives"),
@@ -37,12 +37,15 @@ const ui = {
   nukeButton: document.getElementById("nuke-button"),
   startWave: document.getElementById("start-wave"),
   pauseWave: document.getElementById("pause-wave"),
+  nukeCount: document.getElementById("nuke-count"),
   upgradeDetails: document.getElementById("upgrade-details"),
   upgradePanel: document.getElementById("upgrade-panel"),
   upgradeTarget: document.getElementById("upgrade-target"),
   upgradeTo: document.getElementById("upgrade-to"),
   upgradeTargetRow: document.getElementById("upgrade-target-row"),
   upgradeTargetAction: document.getElementById("upgrade-target-action"),
+  trapUpgradeAction: document.getElementById("trap-upgrade-action"),
+  upgradeTrap: document.getElementById("upgrade-trap"),
   targetingRow: document.getElementById("targeting-row"),
   targetingMode: document.getElementById("targeting-mode"),
   watchUpgradeActions: document.getElementById("watch-upgrade-actions"),
@@ -51,6 +54,9 @@ const ui = {
   trapUpgradeActions: document.getElementById("trap-upgrade-actions"),
   trapPath1: document.getElementById("trap-path-1"),
   trapPath2: document.getElementById("trap-path-2"),
+  flameUpgradeActions: document.getElementById("flame-upgrade-actions"),
+  flamePath1: document.getElementById("flame-path-1"),
+  flamePath2: document.getElementById("flame-path-2"),
   jasperControls: document.getElementById("jasper-controls"),
   setWave: document.getElementById("set-wave"),
   applyWave: document.getElementById("apply-wave"),
@@ -104,6 +110,7 @@ const state = {
   flames: [],
   traps: [],
   selectedTower: null,
+  selectedTrap: null,
   waveInProgress: false,
   paused: false,
   pauseDrain: 0,
@@ -253,13 +260,13 @@ const towerTypes = {
   },
   flame: {
     cost: 90,
-    range: 110,
+    range: 80,
     rate: 0.18,
-    damage: 2.5,
+    damage: 50,
     color: "#f97316",
     slow: 0,
     coneAngle: 0.7,
-    burnDps: 6,
+    burnDps: 18,
     burnDuration: 3,
   },
   trap: {
@@ -459,8 +466,10 @@ function updateHud() {
     ui.buildWall.textContent = state.wallsPlaced === 0 ? "Wall (Free)" : "Wall (10)";
   }
   if (ui.nukeButton) {
-    ui.nukeButton.textContent = `NUKE (${availableNukes})`;
     ui.nukeButton.disabled = availableNukes === 0;
+  }
+  if (ui.nukeCount) {
+    ui.nukeCount.textContent = `Nukes: ${availableNukes}`;
   }
 }
 
@@ -510,6 +519,29 @@ function sellTower(tower) {
   if (state.selectedTower === tower) {
     state.selectedTower = null;
   }
+}
+
+function getTrapUpgradeCost(trap) {
+  const baseCost = 35;
+  const level = trap.level || 1;
+  return Math.round(baseCost * Math.pow(1.6, Math.max(0, level - 1)));
+}
+
+function upgradeTrap(trap) {
+  const level = trap.level || 1;
+  if (level >= 5) return;
+  const cost = getTrapUpgradeCost(trap);
+  if (!canAfford(cost)) {
+    if (ui.upgradePanel) flashButton(ui.upgradePanel);
+    return;
+  }
+  payCost(cost);
+  trap.level = level + 1;
+  trap.damage *= trap.explode ? 1.25 : 1.15;
+  if (trap.explode) {
+    trap.splashRadius = Math.min(120, (trap.splashRadius || 40) + 10);
+  }
+  updateHud();
 }
 
 function updateEncyclopedia() {
@@ -734,6 +766,7 @@ function createEnemy(type, options = {}) {
     stealth: type === "stealth",
     revealed: type !== "stealth",
     radioactive,
+    revealTimer: 0,
   };
   if (enemy.armored) {
     enemy.armorHits = 0;
@@ -851,6 +884,9 @@ function placeTower(type, x, y) {
     tower.upgradePath = 1;
     tower.trapCooldown = 0;
   }
+  if (type === "flame") {
+    tower.upgradePath = 1;
+  }
   if (data.moveSpeed) {
     tower.baseX = x;
     tower.baseY = y;
@@ -913,6 +949,15 @@ function getTowerStats(tower) {
   let projectileSpeed = data.projectileSpeed;
   let fireDps = 0;
   let fireDuration = 0;
+  let coneAngle = data.coneAngle;
+  let flameSpreadDepth = 0;
+  let flameSpreadPower = 0;
+  let flameSpreadWindow = 0;
+  let flameReveal = false;
+  let flamePermanentReveal = false;
+  let flameRadius = 0;
+  let flameArmorMelt = false;
+  let flameIgniteAll = false;
 
   if (tower.type === "watch") {
     if (!projectileSpeed) {
@@ -952,6 +997,93 @@ function getTowerStats(tower) {
         fireDuration = (data.fireDuration || 0) + bonus * 0.25;
       }
     }
+    if (tower.type === "flame") {
+      const tier = Math.min(level, 5);
+      const path = tower.upgradePath || 1;
+      if (path === 1) {
+        if (tier >= 1) {
+          damage *= 1.1;
+          coneAngle = (coneAngle || 0.7) + 0.1;
+        }
+        if (tier >= 2) {
+          flameArmorMelt = true;
+        }
+        if (tier >= 3) {
+          flameSpreadDepth = 1;
+          flameSpreadPower = 0.45;
+          range += 12;
+        }
+        if (tier >= 4) {
+          flameSpreadDepth = 2;
+          flameSpreadPower = 0.6;
+          range += 10;
+        }
+        if (tier >= 5) {
+          flameSpreadDepth = 6;
+          flameSpreadPower = 0.8;
+          flameSpreadWindow = 1;
+          range += 40;
+          fireDuration = Math.max(fireDuration, 14);
+        }
+      } else {
+        if (tier >= 1) {
+          fireDuration = Math.max(fireDuration, (data.burnDuration || 3) + 1);
+        }
+      if (tier >= 2) {
+          flameReveal = true;
+          flameRadius = 30;
+          flameSpreadDepth = 1;
+          flameSpreadPower = 0.3;
+        }
+        if (tier >= 3) {
+          fireDuration = Math.max(fireDuration, (data.burnDuration || 3) * 1.3);
+        }
+        if (tier >= 4) {
+          fireDps = (data.burnDps || 18) * 1.2;
+          coneAngle = (coneAngle || 0.7) + 0.1;
+          flameRadius = Math.max(flameRadius, 60);
+        }
+        if (tier >= 5) {
+          fireDps = (data.burnDps || 18) * 1.3;
+          coneAngle = (coneAngle || 0.7) + 0.2;
+          flameRadius = Math.max(flameRadius, 120);
+          flameIgniteAll = true;
+          flamePermanentReveal = true;
+        }
+      }
+    }
+  }
+  if (tower.type === "flame") {
+    const tier = Math.min(tower.level, 5);
+    const path = tower.upgradePath || 1;
+    const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "flame burst (wider, more damage)",
+      "armour melt",
+      "wildfire spread",
+      "pyromaniac spread",
+      "the inferno",
+    ];
+    const path2Upgrades = [
+      "ignite",
+      "sparks (reveal)",
+      "lingering flames",
+      "heat wave",
+      "pyroclast",
+    ];
+    upgradeText = [
+      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
+    ][0];
+    if (ui.flamePath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
+      ui.flamePath1.textContent = `Path 1 (${p1Tier}/5): ${nextP1}`;
+    }
+    if (ui.flamePath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
+      ui.flamePath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
+    }
   }
 
   if (projectileSpeed) {
@@ -967,6 +1099,15 @@ function getTowerStats(tower) {
     projectileSpeed,
     fireDps,
     fireDuration,
+    coneAngle,
+    flameSpreadDepth,
+    flameSpreadPower,
+    flameSpreadWindow,
+    flameReveal,
+    flamePermanentReveal,
+    flameRadius,
+    flameArmorMelt,
+    flameIgniteAll,
   };
 }
 
@@ -1001,6 +1142,24 @@ function getTowerDescription(type) {
 
 function updateUpgradePanel() {
   if (!ui.upgradeDetails) return;
+  if (state.selectedTrap) {
+    const trap = state.selectedTrap;
+    const level = trap.level || 1;
+    const cost = getTrapUpgradeCost(trap);
+    const typeLabel = trap.explode ? "Explosive Trap" : trap.turret ? "Turret Trap" : "Spike Trap";
+    const radiusText = trap.explode ? ` | Radius ${Math.round(trap.splashRadius || 0)}` : "";
+    ui.upgradeDetails.textContent = `Trap: ${typeLabel}\n\nTier ${level} (Upgrade ${level < 5 ? `Cost ${cost}` : "MAX"}).\n\nDamage ${Math.round(trap.damage)}${radiusText}\n\nUpgrades increase explosion size and damage.`;
+    if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
+    if (ui.trapUpgradeActions) ui.trapUpgradeActions.classList.add("hidden");
+    if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
+    if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
+    if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
+    if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
+    if (ui.trapUpgradeAction) {
+      ui.trapUpgradeAction.classList.toggle("hidden", level >= 5);
+    }
+    return;
+  }
   const tower = state.selectedTower;
   if (!tower) {
     ui.upgradeDetails.textContent = "Select a tower to see upgrade info.";
@@ -1008,6 +1167,8 @@ function updateUpgradePanel() {
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
+    if (ui.trapUpgradeAction) ui.trapUpgradeAction.classList.add("hidden");
+    if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
     return;
   }
   if (tower.type === "wall" || tower.type === "mine") {
@@ -1016,6 +1177,7 @@ function updateUpgradePanel() {
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
+    if (ui.trapUpgradeAction) ui.trapUpgradeAction.classList.add("hidden");
     return;
   }
   const stats = getTowerStats(tower);
@@ -1124,6 +1286,9 @@ function updateUpgradePanel() {
   if (ui.trapUpgradeActions) {
     ui.trapUpgradeActions.classList.toggle("hidden", tower.type !== "trap");
   }
+  if (ui.flameUpgradeActions) {
+    ui.flameUpgradeActions.classList.toggle("hidden", tower.type !== "flame");
+  }
   if (ui.upgradeTargetRow) {
     ui.upgradeTargetRow.classList.toggle("hidden", bombMaxed);
   }
@@ -1136,6 +1301,9 @@ function updateUpgradePanel() {
   if (ui.targetingMode) {
     const mode = tower.targeting || "first";
     ui.targetingMode.textContent = `Target: ${targetingLabels[mode] || "First"}`;
+  }
+  if (ui.trapUpgradeAction) {
+    ui.trapUpgradeAction.classList.add("hidden");
   }
 }
 
@@ -1153,12 +1321,20 @@ function handleClick(event) {
     }
   }
 
+  const trapHere = state.traps.find((trap) => Math.hypot(trap.x - snapped.x, trap.y - snapped.y) < 18);
+  if (trapHere) {
+    state.selectedTrap = trapHere;
+    state.selectedTower = null;
+    return;
+  }
+
   let selected = null;
   const towersHere = state.towers.filter((tower) => Math.hypot(tower.x - snapped.x, tower.y - snapped.y) < 20);
   if (towersHere.length > 0) {
     selected = towersHere.find((tower) => tower.type !== "wall") || towersHere[0];
   }
   state.selectedTower = selected;
+  state.selectedTrap = null;
   if (state.placing) {
     placeTower(state.placing, snapped.x, snapped.y);
   }
@@ -1329,12 +1505,42 @@ function fireFlameCone(tower, enemy, stats) {
   const originY = tower.y;
   const targetPos = getEnemyPosition(enemy);
   const angle = Math.atan2(targetPos.y - originY, targetPos.x - originX);
-  const coneAngle = data.coneAngle || 0.7;
+  const coneAngle = stats.coneAngle || data.coneAngle || 0.7;
   const range = stats.range;
   const damage = stats.damage;
+  const burnDps = stats.fireDps > 0 ? stats.fireDps : (data.burnDps || 18);
+  const burnDuration = stats.fireDuration > 0 ? stats.fireDuration : (data.burnDuration || 3);
+  const igniteAll = stats.flameIgniteAll;
+  const spreadDepth = stats.flameSpreadDepth || 0;
+  const spreadPower = stats.flameSpreadPower || 0;
+  const spreadWindow = stats.flameSpreadWindow || 0;
+  const spreadRadius = 50;
+  const igniteRadius = stats.flameRadius || 0;
+  const now = performance.now() / 1000;
+  function igniteTarget(target, depth = 0) {
+    if (target.hp <= 0) return;
+    applyDamage(target, damage * (depth > 0 ? Math.pow(spreadPower || 0.6, depth) : 1));
+    if (!target.darkMatter) {
+      target.burnTimer = Math.max(target.burnTimer, burnDuration);
+      target.burnDps = Math.max(target.burnDps, burnDps);
+    }
+    if (stats.flameReveal) {
+      target.revealed = true;
+      target.revealTimer = Math.max(target.revealTimer || 0, 3);
+    }
+    if (stats.flamePermanentReveal) {
+      target.stealth = false;
+      target.revealed = true;
+    }
+    if (stats.flameArmorMelt && target.armored) {
+      applyArmorHit(target);
+      applyArmorHit(target);
+    }
+  }
+  const ignited = [];
   for (const target of state.enemies) {
     if (target.hp <= 0) continue;
-    if (target.stealth && !target.revealed && !state.revealStealth) continue;
+    if (target.stealth && !target.revealed && !state.revealStealth && !igniteAll) continue;
     const dx = target.x - originX;
     const dy = target.y - originY;
     const dist = Math.hypot(dx, dy);
@@ -1342,15 +1548,34 @@ function fireFlameCone(tower, enemy, stats) {
     const targetAngle = Math.atan2(dy, dx);
     let diff = Math.abs(targetAngle - angle);
     if (diff > Math.PI) diff = Math.PI * 2 - diff;
-    if (diff <= coneAngle * 0.5) {
-      applyDamage(target, damage);
-      if (!target.darkMatter) {
-        target.burnTimer = Math.max(target.burnTimer, data.burnDuration || 3);
-        target.burnDps = Math.max(target.burnDps, data.burnDps || 6);
+    const inCone = diff <= coneAngle * 0.5;
+    const inAura = igniteRadius > 0 && dist <= igniteRadius;
+    if (inCone || inAura || igniteAll) {
+      igniteTarget(target);
+      ignited.push(target);
+    }
+  }
+  if (spreadDepth > 0 && ignited.length > 0) {
+    const frontier = [...ignited];
+    const seen = new Set(frontier);
+    let depth = 0;
+    while (frontier.length > 0 && depth < spreadDepth) {
+      const next = [];
+      for (const source of frontier) {
+        if (spreadWindow > 0 && source.burnTimer < burnDuration - spreadWindow) continue;
+        for (const candidate of state.enemies) {
+          if (candidate.hp <= 0) continue;
+          if (seen.has(candidate)) continue;
+          const dist = Math.hypot(candidate.x - source.x, candidate.y - source.y);
+          if (dist <= spreadRadius) {
+            igniteTarget(candidate, depth + 1);
+            seen.add(candidate);
+            next.push(candidate);
+          }
+        }
       }
-      if (target.hp <= 0) {
-        awardGold(15);
-      }
+      frontier.splice(0, frontier.length, ...next);
+      depth += 1;
     }
   }
   state.flames.push({
@@ -1361,6 +1586,7 @@ function fireFlameCone(tower, enemy, stats) {
     spread: coneAngle,
     ttl: 0.12,
   });
+  spawnNukeEmbers(originX + Math.cos(angle) * 18, originY + Math.sin(angle) * 18, 6);
 }
 
 function updateProjectiles(dt) {
@@ -1435,6 +1661,9 @@ function updateProjectiles(dt) {
           applyArmorHit(proj.target);
         }
         applyDamage(proj.target, proj.damage);
+        if (proj.sourceType === "watch") {
+          proj.target.revealed = true;
+        }
         if (!proj.target.darkMatter && proj.poisonDuration > 0 && proj.poisonDps > 0) {
           proj.target.dotTimer = Math.max(proj.target.dotTimer, proj.poisonDuration);
           proj.target.dotDps = Math.max(proj.target.dotDps, proj.poisonDps);
@@ -1477,7 +1706,10 @@ function updateTraps(dt) {
   const remaining = [];
   for (const trap of state.traps) {
     trap.ttl -= dt;
-    if (trap.ttl <= 0) continue;
+    if (trap.ttl <= 0) {
+      if (state.selectedTrap === trap) state.selectedTrap = null;
+      continue;
+    }
     if (trap.turret) {
       trap.cooldown = Math.max(0, trap.cooldown - dt);
       if (trap.cooldown <= 0) {
@@ -1653,7 +1885,7 @@ function getTrapSetterStats(tower) {
   const path = tower.upgradePath || 1;
   let trapInterval = 4;
   let trapLifetime = 30;
-  let trapDamage = 14;
+  let trapDamage = 9;
   let trapType = "spike";
   let slow = 0;
   let explode = false;
@@ -1740,7 +1972,7 @@ function findTrapSpawnPoint(tower, onPath) {
 }
 
 function spawnTrapFrom(tower, stats) {
-  const onPath = !(stats.trapType === "turret" || stats.trapType === "sentry");
+  const onPath = true;
   for (let i = 0; i < stats.spawnCount; i += 1) {
     const point = findTrapSpawnPoint(tower, onPath);
     if (!point) continue;
@@ -1868,6 +2100,12 @@ function updateEnemies(dt) {
   for (const enemy of state.enemies) {
     if (enemy.slowTimer > 0) {
       enemy.slowTimer -= dt;
+    }
+    if (enemy.revealTimer > 0) {
+      enemy.revealTimer -= dt;
+      if (enemy.revealTimer <= 0 && enemy.stealth) {
+        enemy.revealed = false;
+      }
     }
     if (enemy.embrittleTimer > 0) {
       enemy.embrittleTimer -= dt;
@@ -2764,6 +3002,8 @@ function drawEnemies() {
           : "#fb923c";
     if (enemy.darkMatter) {
       baseColor = "#241729";
+    } else if (enemy.radioactive) {
+      baseColor = "#22c55e";
     } else if (enemy.dotTimer > 0) {
       baseColor = "#b65bff";
     } else if (enemy.burnTimer > 0) {
@@ -2811,6 +3051,25 @@ function drawEnemies() {
           else ctx.lineTo(x, y);
         }
         ctx.stroke();
+      }
+    }
+
+    if (enemy.radioactive) {
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.65)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+      const sparks = 4;
+      for (let i = 0; i < sparks; i += 1) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = randomBetween(2, radius + 4);
+        const x = pos.x + Math.cos(angle) * r;
+        const y = pos.y + Math.sin(angle) * r;
+        ctx.fillStyle = "rgba(134, 239, 172, 0.8)";
+        ctx.beginPath();
+        ctx.arc(x, y, randomBetween(1.2, 2.4), 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
@@ -2944,10 +3203,12 @@ function drawNukeLaunches() {
     const scale = launch.scale ?? 1;
     ctx.save();
     if (nukeImage.complete && nukeImage.naturalWidth) {
-      const base = 64;
+      const base = 78;
       ctx.translate(x, y);
       ctx.rotate(rotation);
       ctx.scale(scale, scale);
+      ctx.shadowColor = "rgba(248, 113, 113, 0.55)";
+      ctx.shadowBlur = 18;
       ctx.drawImage(nukeImage, -base * 0.5, -base * 0.8, base, base * 1.6);
     } else {
       ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
@@ -2977,18 +3238,24 @@ function drawNukeParticles() {
 
 function drawFlames() {
   for (const flame of state.flames) {
-    const grad = ctx.createRadialGradient(flame.x, flame.y, 8, flame.x, flame.y, flame.range);
-    grad.addColorStop(0, "rgba(249, 115, 22, 0.45)");
-    grad.addColorStop(0.5, "rgba(249, 115, 22, 0.2)");
-    grad.addColorStop(1, "rgba(15, 23, 42, 0)");
-    ctx.save();
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(flame.x, flame.y);
-    ctx.arc(flame.x, flame.y, flame.range, flame.angle - flame.spread * 0.5, flame.angle + flame.spread * 0.5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    const steps = 6;
+    for (let i = 1; i <= steps; i += 1) {
+      const t = i / steps;
+      const dist = flame.range * t;
+      const jitter = (Math.random() - 0.5) * 0.2;
+      const angle = flame.angle + jitter;
+      const x = flame.x + Math.cos(angle) * dist;
+      const y = flame.y + Math.sin(angle) * dist;
+      const size = 5 + (1 - t) * 6;
+      const grad = ctx.createRadialGradient(x, y, size * 0.2, x, y, size);
+      grad.addColorStop(0, "rgba(255, 153, 85, 0.95)");
+      grad.addColorStop(0.5, "rgba(249, 115, 22, 0.6)");
+      grad.addColorStop(1, "rgba(30, 41, 59, 0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -3067,8 +3334,8 @@ function draw() {
   drawProjectiles();
   drawExplosions();
   drawNukeParticles();
-  drawNukeLaunches();
   drawFlames();
+  drawNukeLaunches();
   drawBeams();
   drawPlacementPreview();
   ctx.restore();
@@ -3369,6 +3636,33 @@ if (ui.trapPath2) {
   });
 }
 
+if (ui.flamePath1) {
+  ui.flamePath1.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "flame") return;
+    state.selectedTower.upgradePath = 1;
+    upgradeTower(state.selectedTower);
+  });
+}
+
+if (ui.flamePath2) {
+  ui.flamePath2.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "flame") return;
+    state.selectedTower.upgradePath = 2;
+    upgradeTower(state.selectedTower);
+  });
+}
+
+if (ui.upgradeTrap) {
+  ui.upgradeTrap.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTrap) return;
+    upgradeTrap(state.selectedTrap);
+    updateUpgradePanel();
+  });
+}
+
 if (ui.targetingMode) {
   ui.targetingMode.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -3596,6 +3890,7 @@ function resetGame() {
   state.radioactiveWave = null;
   state.nukeUsed = false;
   state.nukeCharges = 0;
+  state.selectedTrap = null;
   state.spawnTimer = 0;
   state.enemiesToSpawn = 0;
   state.easterUnlocked = false;
