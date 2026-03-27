@@ -22,6 +22,8 @@ body {
   overflow: auto;
   overflow-x: hidden;
   font-size: 0.84rem;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .app {
@@ -399,6 +401,10 @@ button:disabled {
   box-shadow: none;
 }
 
+button {
+  touch-action: manipulation;
+}
+
 @keyframes shake {
   0% { transform: translateX(0); }
   20% { transform: translateX(-3px); }
@@ -461,6 +467,7 @@ kbd {
   border: 1px solid rgba(56, 189, 248, 0.2);
   pointer-events: auto;
   touch-action: manipulation;
+  user-select: none;
 }
 
 .title-screen * {
@@ -627,4 +634,29 @@ kbd {
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.sixseven-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+}
+
+.sixseven-overlay img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sixseven-overlay.hidden {
+  display: none;
+}
+
+.title-screen button,
+button {
+  pointer-events: auto;
 }

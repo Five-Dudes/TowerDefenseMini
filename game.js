@@ -2,6 +2,8 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const nukeImage = new Image();
 nukeImage.src = "./assets/nuke.png";
+const sixSevenImage = new Image();
+sixSevenImage.src = "./assets/sixseven-six.gif";
 
 const ui = {
   lives: document.getElementById("lives"),
@@ -92,6 +94,8 @@ const ui = {
   spawnEnemyOnFlame: document.getElementById("spawn-enemy-onflame"),
   spawnEnemyPoisoned: document.getElementById("spawn-enemy-poisoned"),
   gameOver: document.getElementById("game-over"),
+  sixSevenOverlay: document.getElementById("sixseven-overlay"),
+  sixSevenGif: document.getElementById("sixseven-gif"),
   restartGame: document.getElementById("restart-game"),
   mainMenu: document.getElementById("main-menu"),
 };
@@ -147,6 +151,7 @@ const state = {
   enemiesToSpawn: 0,
   easterUnlocked: false,
   keysDown: new Set(),
+  numberKeysDown: new Set(),
   opPlaced: false,
   pathPoints: [],
   wallsPlaced: 0,
@@ -181,6 +186,8 @@ const state = {
   radioactiveWave: null,
   nukeCharges: 0,
   nukeSmoke: null,
+  sixSevenActive: false,
+  sixSevenTimer: null,
 };
 
 const path = [
@@ -5733,6 +5740,7 @@ function resetGame() {
   state.enemiesToSpawn = 0;
   state.easterUnlocked = false;
   state.keysDown.clear();
+  state.numberKeysDown.clear();
   state.opPlaced = false;
   state.pathPoints = [];
   state.wallsPlaced = 0;
@@ -5816,6 +5824,20 @@ function unlockJasperMenu() {
   }
 }
 
+function triggerSixSeven() {
+  if (state.sixSevenActive) return;
+  state.sixSevenActive = true;
+  if (ui.sixSevenOverlay) ui.sixSevenOverlay.classList.remove("hidden");
+  if (ui.sixSevenGif) ui.sixSevenGif.src = sixSevenImage.src;
+  if (state.sixSevenTimer) {
+    clearTimeout(state.sixSevenTimer);
+  }
+  state.sixSevenTimer = setTimeout(() => {
+    state.sixSevenActive = false;
+    if (ui.sixSevenOverlay) ui.sixSevenOverlay.classList.add("hidden");
+  }, 3200);
+}
+
 function tryUnlockInfiniteGold() {
   if (state.infiniteGold) return;
   if (state.jasperProgress < 6) return;
@@ -5873,6 +5895,12 @@ window.addEventListener("keydown", (event) => {
     tryUnlockOpTower();
     tryUnlockInfiniteGold();
   }
+  if (key === "6" || key === "7") {
+    state.numberKeysDown.add(key);
+    if (state.numberKeysDown.has("6") && state.numberKeysDown.has("7")) {
+      triggerSixSeven();
+    }
+  }
 });
 
 window.addEventListener("keyup", (event) => {
@@ -5880,10 +5908,14 @@ window.addEventListener("keyup", (event) => {
   if (key.length === 1 && key >= "a" && key <= "z") {
     state.keysDown.delete(key);
   }
+  if (key === "6" || key === "7") {
+    state.numberKeysDown.delete(key);
+  }
 });
 
 window.addEventListener("blur", () => {
   state.keysDown.clear();
+  state.numberKeysDown.clear();
   state.keyBuffer = "";
   state.jasperProgress = 0;
 });
