@@ -3865,11 +3865,11 @@ function drawNukeParticles() {
 function drawNukeSmokeOverlay() {
   const smoke = state.nukeSmoke;
   if (!smoke) return;
-  const maxAlpha = 0.75;
+  const maxAlpha = 0.9;
   const fade = smoke.expanding ? 1 : Math.max(0, smoke.fadeTimer / smoke.fadeDuration);
   ctx.save();
   ctx.globalAlpha = maxAlpha * fade;
-  ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+  ctx.fillStyle = "rgba(8, 12, 20, 0.95)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
 }
@@ -3984,12 +3984,12 @@ function draw() {
   drawProjectiles();
   drawExplosions();
   drawNukeParticles();
-  drawNukeSmokeOverlay();
   drawFlames();
   drawNukeLaunches();
   drawBeams();
   drawPlacementPreview();
   ctx.restore();
+  drawNukeSmokeOverlay();
   if (state.selectedTower && state.selectedTower.type !== "wall" && state.selectedTower.type !== "mine") {
     ctx.fillStyle = "#e2e8f0";
     ctx.fillText("Click to upgrade (50)", 18, canvas.height - 20);
