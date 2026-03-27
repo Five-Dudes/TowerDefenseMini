@@ -528,20 +528,7 @@ function getTrapUpgradeCost(trap) {
 }
 
 function upgradeTrap(trap) {
-  const level = trap.level || 1;
-  if (level >= 5) return;
-  const cost = getTrapUpgradeCost(trap);
-  if (!canAfford(cost)) {
-    if (ui.upgradePanel) flashButton(ui.upgradePanel);
-    return;
-  }
-  payCost(cost);
-  trap.level = level + 1;
-  trap.damage *= trap.explode ? 1.25 : 1.15;
-  if (trap.explode) {
-    trap.splashRadius = Math.min(120, (trap.splashRadius || 40) + 10);
-  }
-  updateHud();
+  return;
 }
 
 function updateEncyclopedia() {
@@ -1144,20 +1131,16 @@ function updateUpgradePanel() {
   if (!ui.upgradeDetails) return;
   if (state.selectedTrap) {
     const trap = state.selectedTrap;
-    const level = trap.level || 1;
-    const cost = getTrapUpgradeCost(trap);
     const typeLabel = trap.explode ? "Explosive Trap" : trap.turret ? "Turret Trap" : "Spike Trap";
     const radiusText = trap.explode ? ` | Radius ${Math.round(trap.splashRadius || 0)}` : "";
-    ui.upgradeDetails.textContent = `Trap: ${typeLabel}\n\nTier ${level} (Upgrade ${level < 5 ? `Cost ${cost}` : "MAX"}).\n\nDamage ${Math.round(trap.damage)}${radiusText}\n\nUpgrades increase explosion size and damage.`;
+    ui.upgradeDetails.textContent = `Trap: ${typeLabel}\n\nDamage ${Math.round(trap.damage)}${radiusText}\n\nTraps cannot be upgraded.`;
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.trapUpgradeActions) ui.trapUpgradeActions.classList.add("hidden");
     if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
-    if (ui.trapUpgradeAction) {
-      ui.trapUpgradeAction.classList.toggle("hidden", level >= 5);
-    }
+    if (ui.trapUpgradeAction) ui.trapUpgradeAction.classList.add("hidden");
     return;
   }
   const tower = state.selectedTower;
@@ -1319,7 +1302,12 @@ function handleClick(event) {
     }
   }
 
-  const trapHere = state.traps.find((trap) => Math.hypot(trap.x - snapped.x, trap.y - snapped.y) < 18);
+  if (state.placing) {
+    placeTower(state.placing, snapped.x, snapped.y);
+    return;
+  }
+
+  const trapHere = state.traps.find((trap) => Math.hypot(trap.x - x, trap.y - y) < (trap.hitRadius || 14));
   if (trapHere) {
     state.selectedTrap = trapHere;
     state.selectedTower = null;
@@ -1965,31 +1953,35 @@ function getTrapSetterStats(tower) {
   };
 }
 
-function findTrapSpawnPoint(tower, onPath) {
+function findTrapSpawnPoint(tower, onPath, snap = true) {
   for (let i = 0; i < 12; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const radius = 40 + Math.random() * 90;
     const x = tower.x + Math.cos(angle) * radius;
     const y = tower.y + Math.sin(angle) * radius;
-    const snapped = snapToGrid(x, y);
-    if (onPath && !isOnPath(snapped.x, snapped.y)) continue;
-    if (!onPath && isOnPath(snapped.x, snapped.y)) continue;
-    return snapped;
+    if (x < 8 || x > canvas.width - 8 || y < 8 || y > canvas.height - 8) continue;
+    const point = snap ? snapToGrid(x, y) : { x, y };
+    if (onPath && !isOnPath(point.x, point.y)) continue;
+    if (!onPath && isOnPath(point.x, point.y)) continue;
+    return point;
   }
   return null;
 }
 
 function spawnTrapFrom(tower, stats) {
-  const onPath = true;
+  const onPath = !(stats.trapType === "turret" || stats.trapType === "sentry");
+  const snap = onPath;
   for (let i = 0; i < stats.spawnCount; i += 1) {
-    const point = findTrapSpawnPoint(tower, onPath);
+    const point = findTrapSpawnPoint(tower, onPath, snap);
     if (!point) continue;
+    const smallFootprint = stats.trapType === "turret" || stats.trapType === "sentry";
     state.traps.push({
       kind: stats.trapType,
       x: point.x,
       y: point.y,
       ttl: stats.trapLifetime,
       damage: stats.trapDamage,
+      hitRadius: smallFootprint ? 10 : 14,
       slow: stats.slow,
       explode: stats.explode,
       splashRadius: stats.splashRadius,
