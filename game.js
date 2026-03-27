@@ -511,6 +511,12 @@ function sellTower(tower) {
   if (refund > 0) {
     awardGold(refund);
   }
+  if (tower.type === "trap") {
+    state.traps = state.traps.filter((trap) => trap.owner !== tower);
+    if (state.selectedTrap && state.selectedTrap.owner === tower) {
+      state.selectedTrap = null;
+    }
+  }
   state.towers = state.towers.filter((entry) => entry !== tower);
   if (tower.type === "wall") {
     recomputeGlobalPath();
@@ -2108,13 +2114,13 @@ function getTrapSetterStats(tower) {
       trapType = "turret";
       turret = true;
       trapLifetime += 30;
-      sentryLimit = 1;
+      sentryLimit = 4;
     }
     if (tier >= 4) {
       turretRate *= 0.5;
       dual = true;
       trapLifetime += 40;
-      sentryLimit = 2;
+      sentryLimit = 6;
     }
     if (tier >= 5) {
       trapType = "sentry";
@@ -2123,7 +2129,7 @@ function getTrapSetterStats(tower) {
       turretRange = 120;
       spawnCount = 2;
       trapLifetime += 75;
-      sentryLimit = 3;
+      sentryLimit = 12;
     }
   } else {
     if (tier >= 1) trapDamage *= 1.1;
