@@ -1692,11 +1692,37 @@ function updateFlames(dt) {
 
 function updateTraps(dt) {
   const remaining = [];
+  const triggerTrapExplosion = (trap) => {
+    state.explosions.push({
+      x: trap.x,
+      y: trap.y,
+      radius: trap.splashRadius,
+      ttl: 0.35,
+      color: "rgba(248, 113, 113, 0.6)",
+    });
+    for (const splash of state.enemies) {
+      if (splash.hp <= 0) continue;
+      if (splash.armored) continue;
+      const splashDist = Math.hypot(splash.x - trap.x, splash.y - trap.y);
+      if (splashDist <= trap.splashRadius) {
+        applyDamage(splash, trap.damage);
+        if (splash.hp <= 0) {
+          awardGold(15);
+        }
+      }
+    }
+  };
   for (const trap of state.traps) {
-    trap.ttl -= dt;
-    if (trap.ttl <= 0) {
-      if (state.selectedTrap === trap) state.selectedTrap = null;
-      continue;
+    const isSentry = trap.kind === "sentry";
+    if (!isSentry) {
+      trap.ttl -= dt;
+      if (trap.ttl <= 0) {
+        if (trap.explode) {
+          triggerTrapExplosion(trap);
+        }
+        if (state.selectedTrap === trap) state.selectedTrap = null;
+        continue;
+      }
     }
     if (trap.turret) {
       trap.cooldown = Math.max(0, trap.cooldown - dt);
@@ -1739,24 +1765,7 @@ function updateTraps(dt) {
       const dist = Math.hypot(enemy.x - trap.x, enemy.y - trap.y);
       if (dist <= 16) {
         if (trap.explode) {
-          state.explosions.push({
-            x: trap.x,
-            y: trap.y,
-            radius: trap.splashRadius,
-            ttl: 0.35,
-            color: "rgba(248, 113, 113, 0.6)",
-          });
-          for (const splash of state.enemies) {
-            if (splash.hp <= 0) continue;
-            if (splash.armored) continue;
-            const splashDist = Math.hypot(splash.x - trap.x, splash.y - trap.y);
-            if (splashDist <= trap.splashRadius) {
-              applyDamage(splash, trap.damage);
-              if (splash.hp <= 0) {
-                awardGold(15);
-              }
-            }
-          }
+          triggerTrapExplosion(trap);
         } else {
           applyDamage(enemy, trap.damage);
           if (trap.slow > 0 && !enemy.darkMatter) {
@@ -1892,6 +1901,7 @@ function getTrapSetterStats(tower) {
   let turretRate = 0.9;
   let dual = false;
   let spawnCount = 1;
+  let sentryLimit = 0;
 
   if (path === 1) {
     const rateMult = Math.max(0.5, 1 - (tier >= 1 ? 0.1 : 0) - (tier >= 2 ? 0.2 : 0));
@@ -1900,11 +1910,13 @@ function getTrapSetterStats(tower) {
       trapType = "turret";
       turret = true;
       trapLifetime += 30;
+      sentryLimit = 1;
     }
     if (tier >= 4) {
       turretRate *= 0.5;
       dual = true;
       trapLifetime += 40;
+      sentryLimit = 2;
     }
     if (tier >= 5) {
       trapType = "sentry";
@@ -1913,6 +1925,7 @@ function getTrapSetterStats(tower) {
       turretRange = 120;
       spawnCount = 2;
       trapLifetime += 75;
+      sentryLimit = 3;
     }
   } else {
     if (tier >= 1) trapDamage *= 1.1;
@@ -1950,6 +1963,7 @@ function getTrapSetterStats(tower) {
     turretRate,
     dual,
     spawnCount,
+    sentryLimit,
   };
 }
 
@@ -1975,11 +1989,23 @@ function spawnTrapFrom(tower, stats) {
     const point = findTrapSpawnPoint(tower, onPath, snap);
     if (!point) continue;
     const smallFootprint = stats.trapType === "turret" || stats.trapType === "sentry";
+    if (stats.trapType === "sentry" && stats.sentryLimit > 0) {
+      const sentries = state.traps.filter((trap) => trap.kind === "sentry" && trap.owner === tower);
+      if (sentries.length >= stats.sentryLimit) {
+        let oldest = sentries[0];
+        for (const entry of sentries) {
+          if ((entry.createdAt || 0) < (oldest.createdAt || 0)) oldest = entry;
+        }
+        const idx = state.traps.indexOf(oldest);
+        if (idx >= 0) state.traps.splice(idx, 1);
+      }
+    }
     state.traps.push({
       kind: stats.trapType,
+      owner: tower,
       x: point.x,
       y: point.y,
-      ttl: stats.trapLifetime,
+      ttl: stats.trapType === "sentry" ? Infinity : stats.trapLifetime,
       damage: stats.trapDamage,
       hitRadius: smallFootprint ? 10 : 14,
       slow: stats.slow,
@@ -1991,6 +2017,7 @@ function spawnTrapFrom(tower, stats) {
       turretRate: stats.turretRate,
       dual: stats.dual,
       cooldown: 0,
+      createdAt: performance.now(),
     });
   }
 }
