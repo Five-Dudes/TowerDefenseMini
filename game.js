@@ -1,5 +1,7 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const nukeImage = new Image();
+nukeImage.src = "assets/nuke.png";
 
 const ui = {
   lives: document.getElementById("lives"),
@@ -13,6 +15,9 @@ const ui = {
   tipsModal: document.getElementById("tips-modal"),
   openTips: document.getElementById("open-tips"),
   closeTips: document.getElementById("close-tips"),
+  tutorialModal: document.getElementById("tutorial-modal"),
+  openTutorial: document.getElementById("open-tutorial"),
+  closeTutorial: document.getElementById("close-tutorial"),
   jasperModal: document.getElementById("jasper-modal"),
   openJasper: document.getElementById("open-jasper"),
   closeJasper: document.getElementById("close-jasper"),
@@ -23,7 +28,9 @@ const ui = {
   buildDrone: document.getElementById("build-drone"),
   buildBomb: document.getElementById("build-bomb"),
   buildLaser: document.getElementById("build-laser"),
+  buildFlame: document.getElementById("build-flame"),
   buildDart: document.getElementById("build-dart"),
+  buildTrap: document.getElementById("build-trap"),
   buildMine: document.getElementById("build-mine"),
   buildWall: document.getElementById("build-wall"),
   buildOp: document.getElementById("build-op"),
@@ -36,9 +43,14 @@ const ui = {
   upgradeTo: document.getElementById("upgrade-to"),
   upgradeTargetRow: document.getElementById("upgrade-target-row"),
   upgradeTargetAction: document.getElementById("upgrade-target-action"),
+  targetingRow: document.getElementById("targeting-row"),
+  targetingMode: document.getElementById("targeting-mode"),
   watchUpgradeActions: document.getElementById("watch-upgrade-actions"),
   watchPath1: document.getElementById("watch-path-1"),
   watchPath2: document.getElementById("watch-path-2"),
+  trapUpgradeActions: document.getElementById("trap-upgrade-actions"),
+  trapPath1: document.getElementById("trap-path-1"),
+  trapPath2: document.getElementById("trap-path-2"),
   jasperControls: document.getElementById("jasper-controls"),
   setWave: document.getElementById("set-wave"),
   applyWave: document.getElementById("apply-wave"),
@@ -62,10 +74,20 @@ const buildButtons = {
   drone: ui.buildDrone,
   bomb: ui.buildBomb,
   laser: ui.buildLaser,
+  flame: ui.buildFlame,
   dart: ui.buildDart,
+  trap: ui.buildTrap,
   mine: ui.buildMine,
   wall: ui.buildWall,
   op: ui.buildOp,
+};
+
+const targetingModes = ["first", "last", "strongest", "weakest"];
+const targetingLabels = {
+  first: "First",
+  last: "Last",
+  strongest: "Strongest",
+  weakest: "Weakest",
 };
 
 const state = {
@@ -79,6 +101,8 @@ const state = {
   projectiles: [],
   beams: [],
   explosions: [],
+  flames: [],
+  traps: [],
   selectedTower: null,
   waveInProgress: false,
   paused: false,
@@ -115,6 +139,14 @@ const state = {
     speed: 5 + (i % 3) * 3,
     size: 22 + (i % 4) * 6,
   })),
+  portalClock: 0,
+  nukeLaunches: [],
+  nukeParticles: [],
+  screenShakeTime: 0,
+  screenShakeDuration: 0,
+  screenShakePower: 0,
+  radioactiveWave: null,
+  nukeCharges: 0,
 };
 
 const path = [
@@ -218,6 +250,25 @@ const towerTypes = {
     poisonDps: 10,
     poisonDuration: 4,
     projectileSpeed: 380,
+  },
+  flame: {
+    cost: 90,
+    range: 110,
+    rate: 0.18,
+    damage: 2.5,
+    color: "#f97316",
+    slow: 0,
+    coneAngle: 0.7,
+    burnDps: 6,
+    burnDuration: 3,
+  },
+  trap: {
+    cost: 95,
+    range: 0,
+    rate: 0,
+    damage: 0,
+    color: "#f59e0b",
+    slow: 0,
   },
   mine: {
     cost: 30,
@@ -400,6 +451,7 @@ function isOnPath(x, y) {
 }
 
 function updateHud() {
+  const availableNukes = state.nukeCharges;
   ui.lives.textContent = state.lives;
   ui.gold.textContent = state.infiniteGold ? "∞" : state.gold;
   ui.wave.textContent = state.wave;
@@ -407,8 +459,8 @@ function updateHud() {
     ui.buildWall.textContent = state.wallsPlaced === 0 ? "Wall (Free)" : "Wall (10)";
   }
   if (ui.nukeButton) {
-    ui.nukeButton.textContent = state.nukeUsed ? "NUKE USED" : "NUKE";
-    ui.nukeButton.disabled = state.nukeUsed;
+    ui.nukeButton.textContent = `NUKE (${availableNukes})`;
+    ui.nukeButton.disabled = availableNukes === 0;
   }
 }
 
@@ -500,6 +552,11 @@ function updateEncyclopedia() {
       name: "Dark Matter Mutation",
       desc: "Immune to laser, poison, and slow effects.",
     },
+    {
+      key: "radioactive",
+      name: "Radioactive Effect",
+      desc: "Lingering hazard from the Nuke. Halves enemy health and speed for a full wave.",
+    },
   ];
   const lines = [];
   const seenEnemies = enemyEntries.filter((entry) => state.encyclopedia.has(entry.key));
@@ -568,6 +625,25 @@ function startWave() {
   updateHud();
 }
 
+function togglePauseWave() {
+  if (!state.waveInProgress) return;
+  if (!state.paused) {
+    if (!state.infiniteGold && state.gold <= 0) {
+      flashButton(ui.pauseWave);
+      return;
+    }
+    state.paused = true;
+  } else {
+    state.paused = false;
+  }
+  if (ui.pauseWave) {
+    ui.pauseWave.textContent = state.paused ? "Resume Wave" : "Pause Wave";
+  }
+  if (ui.playArea) {
+    ui.playArea.classList.toggle("paused-glitch", state.paused);
+  }
+}
+
 function spawnEnemy() {
   const isBossWave = state.wave % 10 === 0;
   const roll = Math.random();
@@ -622,12 +698,17 @@ function createEnemy(type, options = {}) {
   const tierSpeed = 1 + (tier - 1) * 0.06;
   const maxHpBase = type === "boss" ? baseHp * 12 : baseHp;
   const speedyHpMultiplier = type === "speedy" ? 0.7 : 1;
-  const maxHp = maxHpBase * hpMultiplier * (type === "heavy" ? 2.4 : 1) * speedyHpMultiplier * tierHp;
+  let maxHp = maxHpBase * hpMultiplier * (type === "heavy" ? 2.4 : 1) * speedyHpMultiplier * tierHp;
   const baseSpeed = type === "speedy"
     ? (state.wave === 1 ? 56 : 60 + state.wave * 2.2)
     : (state.wave === 1 ? 26 : 28 + state.wave * 2.6);
-  const speed = (type === "heavy" ? baseSpeed * 0.6 : baseSpeed) * tierSpeed * (type === "stealth" ? 0.9 : 1);
+  let speed = (type === "heavy" ? baseSpeed * 0.6 : baseSpeed) * tierSpeed * (type === "stealth" ? 0.9 : 1);
   const speedMultiplier = state.difficultyMultipliers.enemySpeed || 1;
+  const radioactive = state.radioactiveWave === state.wave;
+  if (radioactive) {
+    maxHp *= 0.5;
+    speed *= 0.5;
+  }
   const pathPoints = state.pathPoints.length > 0 ? state.pathPoints : [startPoint, endPoint];
   const start = pathPoints[0];
   const enemy = {
@@ -646,11 +727,18 @@ function createEnemy(type, options = {}) {
     dotDps: 0,
     burnTimer: 0,
     burnDps: 0,
+    embrittleTimer: 0,
+    embrittleMultiplier: 1,
     tier,
     facing: 0,
     stealth: type === "stealth",
     revealed: type !== "stealth",
+    radioactive,
   };
+  if (enemy.armored) {
+    enemy.armorHits = 0;
+    enemy.armorBreakThreshold = 2 + Math.floor(Math.random() * 2);
+  }
   if (options.poisoned) {
     enemy.dotTimer = options.dotTimer ?? 4;
     enemy.dotDps = options.dotDps ?? (towerTypes.dart?.poisonDps || 8);
@@ -757,7 +845,12 @@ function placeTower(type, x, y) {
     cooldown: 0,
     paidCost: cost,
     disabled: false,
+    targeting: "first",
   };
+  if (type === "trap") {
+    tower.upgradePath = 1;
+    tower.trapCooldown = 0;
+  }
   if (data.moveSpeed) {
     tower.baseX = x;
     tower.baseY = y;
@@ -792,7 +885,9 @@ function getUpgradeCostToLevel(currentLevel, targetLevel) {
 
 function upgradeTower(tower) {
   if (tower.type === "wall" || tower.type === "mine") return;
-  if ((tower.level || 1) >= 1000) return;
+  const level = tower.level || 1;
+  if (tower.type === "bomb" && level >= 5) return;
+  if (level >= 1000) return;
   const upgradeCost = getUpgradeCost(tower);
   if (!canAfford(upgradeCost)) {
     flashButton(ui.upgradePanel);
@@ -800,6 +895,10 @@ function upgradeTower(tower) {
   }
   payCost(upgradeCost);
   tower.level += 1;
+  if (tower.type === "bomb" && tower.level >= 5 && !tower.bombNukeGranted) {
+    tower.bombNukeGranted = true;
+    state.nukeCharges += 1;
+  }
   updateHud();
 }
 
@@ -811,10 +910,14 @@ function getTowerStats(tower) {
   let damage = data.damage;
   let rate = data.rate;
   let slow = data.slow;
+  let projectileSpeed = data.projectileSpeed;
   let fireDps = 0;
   let fireDuration = 0;
 
   if (tower.type === "watch") {
+    if (!projectileSpeed) {
+      projectileSpeed = 320;
+    }
     const path = tower.upgradePath || 1;
     const tier = Math.min(level, 5);
     if (path === 1) {
@@ -851,14 +954,18 @@ function getTowerStats(tower) {
     }
   }
 
-  const nukePenalty = tower.nukePenalty || 1;
+  if (projectileSpeed) {
+    projectileSpeed *= 1 + Math.max(0, level - 1) * 0.06;
+  }
+
   return {
     data,
-    range: range * nukePenalty,
-    damage: damage * nukePenalty,
-    rate: rate / nukePenalty,
+    range,
+    damage,
+    rate,
     slow: Math.min(0.85, slow),
-    fireDps: fireDps * nukePenalty,
+    projectileSpeed,
+    fireDps,
     fireDuration,
   };
 }
@@ -877,6 +984,10 @@ function getTowerDescription(type) {
       return "Piercing beam that hits lines of enemies. Upgrades add burn.";
     case "dart":
       return "Poisons enemies over time.";
+    case "flame":
+      return "Rapid cone of flames that applies burn.";
+    case "trap":
+      return "Spawns traps that decay over time.";
     case "mine":
       return "Explodes when enemies walk over it.";
     case "wall":
@@ -896,6 +1007,7 @@ function updateUpgradePanel() {
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
+    if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
     return;
   }
   if (tower.type === "wall" || tower.type === "mine") {
@@ -903,13 +1015,15 @@ function updateUpgradePanel() {
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
+    if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
     return;
   }
   const stats = getTowerStats(tower);
   const desc = getTowerDescription(tower.type);
   const nextTier = (tower.level || 1) + 1;
   const upgradeCost = getUpgradeCost(tower);
-  let upgradeText = "Upgrades: +damage, +range, faster fire.";
+  let upgradeText = "Upgrades: +damage, +range, faster fire, faster bullets.";
+  const bombMaxed = tower.type === "bomb" && (tower.level || 1) >= 5;
   if (tower.type === "freeze") {
     upgradeText = "Upgrades: stronger slow + longer range.";
   }
@@ -962,9 +1076,44 @@ function updateUpgradePanel() {
       ui.watchPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
     }
   }
+  if (tower.type === "trap") {
+    const tier = Math.min(tower.level, 5);
+    const path = tower.upgradePath || 1;
+    const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "spawn rate +10%",
+      "spawn rate +20%",
+      "deploy turrets",
+      "dual turret, faster fire",
+      "sentries, longer life",
+    ];
+    const path2Upgrades = [
+      "trap damage +10%",
+      "lifetime +30s",
+      "sticky traps, slow",
+      "exploding mines",
+      "super mines",
+    ];
+    upgradeText = [
+      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
+    ][0];
+    if (ui.trapPath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
+      ui.trapPath1.textContent = `Path 1 (${p1Tier}/5): ${nextP1}`;
+    }
+    if (ui.trapPath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
+      ui.trapPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
+    }
+  }
   const burnText = stats.fireDps > 0 ? ` | Burn ${stats.fireDps.toFixed(1)}/s (${stats.fireDuration.toFixed(1)}s)` : "";
-  const statLine = `Range ${Math.round(stats.range)} | Rate ${stats.rate.toFixed(2)}s | Damage ${Math.round(stats.damage)}${tower.type === "freeze" ? ` | Slow ${stats.slow.toFixed(2)}` : ""}${burnText}`;
-  if ((tower.level || 1) >= 1000) {
+  const speedText = stats.projectileSpeed ? ` | Shot Spd ${Math.round(stats.projectileSpeed)}` : "";
+  const statLine = `Range ${Math.round(stats.range)} | Rate ${stats.rate.toFixed(2)}s | Damage ${Math.round(stats.damage)}${tower.type === "freeze" ? ` | Slow ${stats.slow.toFixed(2)}` : ""}${speedText}${burnText}`;
+  if (bombMaxed) {
+    ui.upgradeDetails.textContent = `MAX TIER.\n\n${desc}\n\n${upgradeText}\n\n${statLine}`;
+  } else if ((tower.level || 1) >= 1000) {
     ui.upgradeDetails.textContent = `MAX TIER.\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
   } else {
     ui.upgradeDetails.textContent = `Next: Tier ${nextTier} (Cost ${upgradeCost}).\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
@@ -972,11 +1121,21 @@ function updateUpgradePanel() {
   if (ui.watchUpgradeActions) {
     ui.watchUpgradeActions.classList.toggle("hidden", tower.type !== "watch");
   }
+  if (ui.trapUpgradeActions) {
+    ui.trapUpgradeActions.classList.toggle("hidden", tower.type !== "trap");
+  }
   if (ui.upgradeTargetRow) {
-    ui.upgradeTargetRow.classList.remove("hidden");
+    ui.upgradeTargetRow.classList.toggle("hidden", bombMaxed);
   }
   if (ui.upgradeTargetAction) {
-    ui.upgradeTargetAction.classList.remove("hidden");
+    ui.upgradeTargetAction.classList.toggle("hidden", bombMaxed);
+  }
+  if (ui.targetingRow) {
+    ui.targetingRow.classList.remove("hidden");
+  }
+  if (ui.targetingMode) {
+    const mode = tower.targeting || "first";
+    ui.targetingMode.textContent = `Target: ${targetingLabels[mode] || "First"}`;
   }
 }
 
@@ -1050,6 +1209,9 @@ function fireProjectile(tower, enemy, stats) {
   const sourceType = tower.type;
   const poisonDps = (data.poisonDps || 0) + (tower.level - 1) * 1.5;
   const poisonDuration = data.poisonDuration ? data.poisonDuration + (tower.level - 1) * 0.2 : 0;
+  const embrittlementPercent = sourceType === "dart"
+    ? 0.05 + Math.max(0, tower.level - 1) * 0.02
+    : 0;
   if (data.projectileType === "gas") {
     emitFreezeGas(tower, enemy, stats);
     return;
@@ -1061,7 +1223,7 @@ function fireProjectile(tower, enemy, stats) {
       x: tower.x,
       y: tower.y,
       target: enemy,
-      speed: data.projectileSpeed || 260,
+      speed: stats.projectileSpeed || data.projectileSpeed || 260,
       damage,
       splashRadius: data.splashRadius,
       sourceType,
@@ -1074,12 +1236,13 @@ function fireProjectile(tower, enemy, stats) {
     x: tower.x,
     y: tower.y,
     target: enemy,
-    speed: data.projectileSpeed || 320,
+    speed: stats.projectileSpeed || data.projectileSpeed || 320,
     damage,
     slow: stats.slow,
     sourceType,
     poisonDps,
     poisonDuration,
+    embrittlementPercent,
   });
 }
 
@@ -1113,7 +1276,10 @@ function fireLaser(tower, enemy, stats, range) {
     const closestY = originY + uy * t;
     const distToLine = Math.hypot(pos.x - closestX, pos.y - closestY);
     if (distToLine <= beamWidth) {
-      target.hp -= damage;
+      if (target.armored && (sourceType === "laser" || sourceType === "bomb")) {
+        applyArmorHit(target);
+      }
+      applyDamage(target, damage);
       if (stats.fireDps > 0 && stats.fireDuration > 0 && !target.darkMatter) {
         target.burnTimer = Math.max(target.burnTimer, stats.fireDuration);
         target.burnDps = Math.max(target.burnDps, stats.fireDps);
@@ -1123,7 +1289,10 @@ function fireLaser(tower, enemy, stats, range) {
           if (splash.hp <= 0) continue;
           const splashDist = Math.hypot(splash.x - target.x, splash.y - target.y);
           if (splashDist <= data.splashRadius) {
-            splash.hp -= damage * 0.5;
+            if (splash.armored && (sourceType === "laser" || sourceType === "bomb")) {
+              applyArmorHit(splash);
+            }
+            applyDamage(splash, damage * 0.5);
             if (splash.hp <= 0) {
               awardGold(15);
             }
@@ -1151,6 +1320,46 @@ function fireLaser(tower, enemy, stats, range) {
     width: beamWidth,
     ttl: 0.12,
     color: data.color,
+  });
+}
+
+function fireFlameCone(tower, enemy, stats) {
+  const { data } = stats;
+  const originX = tower.x;
+  const originY = tower.y;
+  const targetPos = getEnemyPosition(enemy);
+  const angle = Math.atan2(targetPos.y - originY, targetPos.x - originX);
+  const coneAngle = data.coneAngle || 0.7;
+  const range = stats.range;
+  const damage = stats.damage;
+  for (const target of state.enemies) {
+    if (target.hp <= 0) continue;
+    if (target.stealth && !target.revealed && !state.revealStealth) continue;
+    const dx = target.x - originX;
+    const dy = target.y - originY;
+    const dist = Math.hypot(dx, dy);
+    if (dist > range) continue;
+    const targetAngle = Math.atan2(dy, dx);
+    let diff = Math.abs(targetAngle - angle);
+    if (diff > Math.PI) diff = Math.PI * 2 - diff;
+    if (diff <= coneAngle * 0.5) {
+      applyDamage(target, damage);
+      if (!target.darkMatter) {
+        target.burnTimer = Math.max(target.burnTimer, data.burnDuration || 3);
+        target.burnDps = Math.max(target.burnDps, data.burnDps || 6);
+      }
+      if (target.hp <= 0) {
+        awardGold(15);
+      }
+    }
+  }
+  state.flames.push({
+    x: originX,
+    y: originY,
+    angle,
+    range,
+    spread: coneAngle,
+    ttl: 0.12,
   });
 }
 
@@ -1196,7 +1405,10 @@ function updateProjectiles(dt) {
           if (enemy.armored && proj.sourceType !== "bomb") continue;
           const splashDist = Math.hypot(enemy.x - targetPos.x, enemy.y - targetPos.y);
           if (splashDist <= proj.splashRadius) {
-            enemy.hp -= proj.damage;
+            if (enemy.armored && proj.sourceType === "bomb") {
+              applyArmorHit(enemy);
+            }
+            applyDamage(enemy, proj.damage);
             if (enemy.hp <= 0) {
               awardGold(15);
             }
@@ -1219,10 +1431,17 @@ function updateProjectiles(dt) {
     const step = proj.speed * dt;
     if (dist <= step) {
       if (!(proj.target.armored && proj.sourceType !== "laser" && proj.sourceType !== "bomb" && proj.sourceType !== "op")) {
-        proj.target.hp -= proj.damage;
+        if (proj.target.armored && (proj.sourceType === "laser" || proj.sourceType === "bomb")) {
+          applyArmorHit(proj.target);
+        }
+        applyDamage(proj.target, proj.damage);
         if (!proj.target.darkMatter && proj.poisonDuration > 0 && proj.poisonDps > 0) {
           proj.target.dotTimer = Math.max(proj.target.dotTimer, proj.poisonDuration);
           proj.target.dotDps = Math.max(proj.target.dotDps, proj.poisonDps);
+          if (proj.embrittlementPercent > 0) {
+            proj.target.embrittleTimer = Math.max(proj.target.embrittleTimer, proj.poisonDuration);
+            proj.target.embrittleMultiplier = Math.max(proj.target.embrittleMultiplier || 1, 1 + proj.embrittlementPercent);
+          }
         }
       }
       if (proj.slow > 0 && !proj.target.darkMatter) {
@@ -1245,6 +1464,90 @@ function updateBeams(dt) {
     beam.ttl -= dt;
     return beam.ttl > 0;
   });
+}
+
+function updateFlames(dt) {
+  state.flames = state.flames.filter((flame) => {
+    flame.ttl -= dt;
+    return flame.ttl > 0;
+  });
+}
+
+function updateTraps(dt) {
+  const remaining = [];
+  for (const trap of state.traps) {
+    trap.ttl -= dt;
+    if (trap.ttl <= 0) continue;
+    if (trap.turret) {
+      trap.cooldown = Math.max(0, trap.cooldown - dt);
+      if (trap.cooldown <= 0) {
+        let target = null;
+        let bestDist = Infinity;
+        for (const enemy of state.enemies) {
+          if (enemy.hp <= 0) continue;
+          const dist = Math.hypot(enemy.x - trap.x, enemy.y - trap.y);
+          if (dist <= trap.turretRange && dist < bestDist) {
+            target = enemy;
+            bestDist = dist;
+          }
+        }
+        if (target) {
+          applyDamage(target, trap.turretDamage);
+          if (trap.dual) {
+            applyDamage(target, trap.turretDamage);
+          }
+          if (target.hp <= 0) {
+            awardGold(15);
+          }
+          trap.cooldown = trap.turretRate;
+        }
+      }
+      remaining.push(trap);
+      continue;
+    }
+    let triggered = false;
+    for (const enemy of state.enemies) {
+      if (enemy.hp <= 0) continue;
+      const dist = Math.hypot(enemy.x - trap.x, enemy.y - trap.y);
+      if (dist <= 16) {
+        if (trap.explode) {
+          state.explosions.push({
+            x: trap.x,
+            y: trap.y,
+            radius: trap.splashRadius,
+            ttl: 0.35,
+            color: "rgba(248, 113, 113, 0.6)",
+          });
+          for (const splash of state.enemies) {
+            if (splash.hp <= 0) continue;
+            if (splash.armored) continue;
+            const splashDist = Math.hypot(splash.x - trap.x, splash.y - trap.y);
+            if (splashDist <= trap.splashRadius) {
+              applyDamage(splash, trap.damage);
+              if (splash.hp <= 0) {
+                awardGold(15);
+              }
+            }
+          }
+        } else {
+          applyDamage(enemy, trap.damage);
+          if (trap.slow > 0 && !enemy.darkMatter) {
+            enemy.slowTimer = Math.max(enemy.slowTimer, 1.5);
+            enemy.slowFactor = Math.max(enemy.slowFactor || 0, trap.slow);
+          }
+          if (enemy.hp <= 0) {
+            awardGold(15);
+          }
+        }
+        triggered = true;
+        break;
+      }
+    }
+    if (!triggered) {
+      remaining.push(trap);
+    }
+  }
+  state.traps = remaining;
 }
 
 function updateTowerMovement(dt) {
@@ -1344,6 +1647,181 @@ function updateTowerMovement(dt) {
   }
 }
 
+function getTrapSetterStats(tower) {
+  const level = tower.level || 1;
+  const tier = Math.min(level, 5);
+  const path = tower.upgradePath || 1;
+  let trapInterval = 4;
+  let trapLifetime = 30;
+  let trapDamage = 14;
+  let trapType = "spike";
+  let slow = 0;
+  let explode = false;
+  let splashRadius = 40;
+  let turret = false;
+  let turretRange = 90;
+  let turretDamage = 6;
+  let turretRate = 0.9;
+  let dual = false;
+  let spawnCount = 1;
+
+  if (path === 1) {
+    const rateMult = Math.max(0.5, 1 - (tier >= 1 ? 0.1 : 0) - (tier >= 2 ? 0.2 : 0));
+    trapInterval *= rateMult;
+    if (tier >= 3) {
+      trapType = "turret";
+      turret = true;
+      trapLifetime += 30;
+    }
+    if (tier >= 4) {
+      turretRate *= 0.5;
+      dual = true;
+      trapLifetime += 40;
+    }
+    if (tier >= 5) {
+      trapType = "sentry";
+      turret = true;
+      turretDamage = 18;
+      turretRange = 120;
+      spawnCount = 2;
+      trapLifetime += 75;
+    }
+  } else {
+    if (tier >= 1) trapDamage *= 1.1;
+    if (tier >= 2) trapLifetime += 30;
+    if (tier >= 3) {
+      trapType = "sticky";
+      slow = 0.35;
+      trapLifetime += 55;
+    }
+    if (tier >= 4) {
+      trapType = "mine";
+      explode = true;
+      trapDamage *= 1.2;
+    }
+    if (tier >= 5) {
+      trapType = "supermine";
+      explode = true;
+      trapDamage *= 1.5;
+      splashRadius = 70;
+      trapLifetime += 125;
+    }
+  }
+
+  return {
+    trapInterval,
+    trapLifetime,
+    trapDamage,
+    trapType,
+    slow,
+    explode,
+    splashRadius,
+    turret,
+    turretRange,
+    turretDamage,
+    turretRate,
+    dual,
+    spawnCount,
+  };
+}
+
+function findTrapSpawnPoint(tower, onPath) {
+  for (let i = 0; i < 12; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 40 + Math.random() * 90;
+    const x = tower.x + Math.cos(angle) * radius;
+    const y = tower.y + Math.sin(angle) * radius;
+    const snapped = snapToGrid(x, y);
+    if (onPath && !isOnPath(snapped.x, snapped.y)) continue;
+    if (!onPath && isOnPath(snapped.x, snapped.y)) continue;
+    return snapped;
+  }
+  return null;
+}
+
+function spawnTrapFrom(tower, stats) {
+  const onPath = !(stats.trapType === "turret" || stats.trapType === "sentry");
+  for (let i = 0; i < stats.spawnCount; i += 1) {
+    const point = findTrapSpawnPoint(tower, onPath);
+    if (!point) continue;
+    state.traps.push({
+      kind: stats.trapType,
+      x: point.x,
+      y: point.y,
+      ttl: stats.trapLifetime,
+      damage: stats.trapDamage,
+      slow: stats.slow,
+      explode: stats.explode,
+      splashRadius: stats.splashRadius,
+      turret: stats.turret,
+      turretRange: stats.turretRange,
+      turretDamage: stats.turretDamage,
+      turretRate: stats.turretRate,
+      dual: stats.dual,
+      cooldown: 0,
+    });
+  }
+}
+
+function getEnemyProgress(enemy) {
+  const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : state.pathPoints;
+  if (!pathPoints || pathPoints.length < 2) return enemy.pathIndex || 0;
+  const idx = Math.min(enemy.pathIndex || 0, pathPoints.length - 2);
+  const current = pathPoints[idx];
+  const next = pathPoints[idx + 1];
+  const segLen = Math.hypot(next.x - current.x, next.y - current.y) || 1;
+  const distToNext = Math.hypot(next.x - enemy.x, next.y - enemy.y);
+  const frac = Math.max(0, Math.min(1, 1 - distToNext / segLen));
+  return idx + frac;
+}
+
+function selectTarget(tower, stats) {
+  const range = stats.range;
+  const candidates = [];
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    if (enemy.stealth && !enemy.revealed && tower.type !== "watch" && tower.type !== "op" && !state.revealStealth) continue;
+    const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
+    if (dist <= range) {
+      candidates.push({ enemy, dist });
+    }
+  }
+  if (candidates.length === 0) return null;
+  let filtered = candidates;
+  if (tower.type === "watch") {
+    const hidden = candidates.filter((entry) => entry.enemy.stealth);
+    if (hidden.length > 0) filtered = hidden;
+  }
+  if (tower.type === "bomb" || tower.type === "laser") {
+    const armored = candidates.filter((entry) => entry.enemy.armored);
+    if (armored.length > 0) filtered = armored;
+  }
+  const mode = tower.targeting || "first";
+  let best = filtered[0];
+  for (const entry of filtered) {
+    const a = best.enemy;
+    const b = entry.enemy;
+    let better = false;
+    if (mode === "first") {
+      better = getEnemyProgress(b) > getEnemyProgress(a);
+    } else if (mode === "last") {
+      better = getEnemyProgress(b) < getEnemyProgress(a);
+    } else if (mode === "strongest") {
+      better = b.hp > a.hp;
+    } else if (mode === "weakest") {
+      better = b.hp < a.hp;
+    }
+    if (better) {
+      best = entry;
+    } else if (!better && entry.enemy === a) {
+      continue;
+    } else if (!better && entry.enemy !== a && entry.dist < best.dist) {
+      best = entry;
+    }
+  }
+  return best.enemy;
+}
+
 function updateTowers(dt) {
   updateTowerMovement(dt);
   for (const tower of state.towers) {
@@ -1352,28 +1830,28 @@ function updateTowers(dt) {
     const data = stats.data;
     if (tower.disabled) continue;
     if (data.isMine || data.blocksPath) continue;
+    if (tower.type === "trap") {
+      const trapStats = getTrapSetterStats(tower);
+      tower.trapCooldown = Math.max(0, (tower.trapCooldown || 0) - dt);
+      if (tower.trapCooldown <= 0) {
+        spawnTrapFrom(tower, trapStats);
+        tower.trapCooldown = trapStats.trapInterval;
+      }
+      continue;
+    }
     tower.cooldown = Math.max(0, tower.cooldown - dt);
     const range = stats.range;
     if (tower.cooldown > 0 && tower.type !== "freeze") continue;
-    let nearest = null;
-    let nearestDist = Infinity;
-    for (const enemy of state.enemies) {
-      if (enemy.hp <= 0) continue;
-      if (enemy.stealth && !enemy.revealed && tower.type !== "watch" && tower.type !== "op" && !state.revealStealth) continue;
-      const pos = getEnemyPosition(enemy);
-      const dist = Math.hypot(pos.x - tower.x, pos.y - tower.y);
-      if (dist <= range && dist < nearestDist) {
-        nearest = enemy;
-        nearestDist = dist;
-      }
-    }
-    if (nearest) {
+    const target = selectTarget(tower, stats);
+    if (target) {
       if (tower.type === "freeze") {
-        emitFreezeGas(tower, nearest, stats);
+        emitFreezeGas(tower, target, stats);
+      } else if (tower.type === "flame") {
+        fireFlameCone(tower, target, stats);
       } else if (data.laser) {
-        fireLaser(tower, nearest, stats, range);
+        fireLaser(tower, target, stats, range);
       } else {
-        fireProjectile(tower, nearest, stats);
+        fireProjectile(tower, target, stats);
       }
       tower.cooldown = stats.rate;
     } else if (tower.type === "freeze") {
@@ -1391,10 +1869,16 @@ function updateEnemies(dt) {
     if (enemy.slowTimer > 0) {
       enemy.slowTimer -= dt;
     }
+    if (enemy.embrittleTimer > 0) {
+      enemy.embrittleTimer -= dt;
+      if (enemy.embrittleTimer <= 0) {
+        enemy.embrittleMultiplier = 1;
+      }
+    }
     if (enemy.dotTimer > 0) {
       const tick = Math.min(enemy.dotTimer, dt);
       enemy.dotTimer -= dt;
-      enemy.hp -= enemy.dotDps * tick;
+      applyDamage(enemy, enemy.dotDps * tick);
       if (enemy.hp <= 0) {
         awardGold(15);
         continue;
@@ -1403,7 +1887,7 @@ function updateEnemies(dt) {
     if (enemy.burnTimer > 0) {
       const tick = Math.min(enemy.burnTimer, dt);
       enemy.burnTimer -= dt;
-      enemy.hp -= enemy.burnDps * tick;
+      applyDamage(enemy, enemy.burnDps * tick);
       if (enemy.hp <= 0) {
         awardGold(15);
         continue;
@@ -1463,7 +1947,7 @@ function updateMines() {
           if (target.armored) continue;
           const splashDist = Math.hypot(target.x - tower.x, target.y - tower.y);
           if (splashDist <= data.splashRadius) {
-            target.hp -= data.damage;
+            applyDamage(target, data.damage);
             if (target.hp <= 0) {
               awardGold(15);
             }
@@ -1487,6 +1971,259 @@ function updateExplosions(dt) {
   });
 }
 
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function lerpColor(from, to, t) {
+  const p = clamp01(t);
+  return {
+    r: Math.round(lerp(from.r, to.r, p)),
+    g: Math.round(lerp(from.g, to.g, p)),
+    b: Math.round(lerp(from.b, to.b, p)),
+  };
+}
+
+function pushNukeParticle(particle) {
+  state.nukeParticles.push(particle);
+}
+
+function spawnNukeSmokeCloud(x, y, count) {
+  const mapRadius = Math.hypot(canvas.width, canvas.height) * 0.6;
+  for (let i = 0; i < count; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 60;
+    const speed = 140 + Math.random() * 240;
+    const size = 12 + Math.random() * 46;
+    const ttl = 3.5 + Math.random() * 1.5;
+    const drift = Math.random() * mapRadius * 0.12;
+    pushNukeParticle({
+      kind: "smoke",
+      x: x + Math.cos(angle) * radius,
+      y: y + Math.sin(angle) * radius,
+      vx: Math.cos(angle) * speed + (Math.random() - 0.5) * drift,
+      vy: Math.sin(angle) * speed - 40 - Math.random() * 60,
+      ttl,
+      age: 0,
+      size,
+      drag: 1.8 + Math.random() * 1.4,
+      start: { r: 226, g: 232, b: 240 },
+      end: { r: 30, g: 41, b: 59 },
+    });
+  }
+}
+
+function spawnNukeEmbers(x, y, count) {
+  for (let i = 0; i < count; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 120;
+    pushNukeParticle({
+      kind: "ember",
+      x: x + (Math.random() - 0.5) * 12,
+      y: y + (Math.random() - 0.5) * 12,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 30,
+      ttl: 0.8 + Math.random() * 0.6,
+      age: 0,
+      size: 2 + Math.random() * 3.5,
+      drag: 3.4,
+      start: { r: 255, g: 140, b: 64 },
+      end: { r: 28, g: 28, b: 30 },
+    });
+  }
+}
+
+function updateNukeParticles(dt) {
+  state.nukeParticles = state.nukeParticles.filter((particle) => {
+    particle.age += dt;
+    if (particle.age >= particle.ttl) return false;
+    const drag = Math.exp(-(particle.drag || 0) * dt);
+    particle.vx *= drag;
+    particle.vy *= drag;
+    particle.vy += (particle.kind === "ember" || particle.kind === "shatter") ? 60 * dt : 18 * dt;
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    return true;
+  });
+}
+
+function triggerScreenShake(power, duration) {
+  state.screenShakePower = Math.max(state.screenShakePower, power);
+  state.screenShakeDuration = Math.max(state.screenShakeDuration, duration);
+  state.screenShakeTime = Math.max(state.screenShakeTime, duration);
+}
+
+function getScreenShakeOffset() {
+  if (state.screenShakeTime <= 0) return { x: 0, y: 0 };
+  const t = state.screenShakeDuration > 0 ? state.screenShakeTime / state.screenShakeDuration : 0;
+  const strength = state.screenShakePower * t;
+  return {
+    x: (Math.random() * 2 - 1) * strength,
+    y: (Math.random() * 2 - 1) * strength,
+  };
+}
+
+function quadraticBezier(p0, p1, p2, t) {
+  const inv = 1 - t;
+  return {
+    x: inv * inv * p0.x + 2 * inv * t * p1.x + t * t * p2.x,
+    y: inv * inv * p0.y + 2 * inv * t * p1.y + t * t * p2.y,
+  };
+}
+
+function quadraticBezierTangent(p0, p1, p2, t) {
+  return {
+    x: 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x),
+    y: 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y),
+  };
+}
+
+function applyNukeDamage(x, y, radius) {
+  const radiusSq = radius * radius;
+  for (const enemy of state.enemies) {
+    const dx = enemy.x - x;
+    const dy = enemy.y - y;
+    if (dx * dx + dy * dy <= radiusSq) {
+      enemy.hp -= 9999;
+    }
+  }
+}
+
+function applyDamage(enemy, amount) {
+  const multiplier = enemy.embrittleTimer > 0 ? (enemy.embrittleMultiplier || 1) : 1;
+  enemy.hp -= amount * multiplier;
+}
+
+function spawnArmorShatter(x, y, count = 12) {
+  for (let i = 0; i < count; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 120 + Math.random() * 220;
+    state.nukeParticles.push({
+      kind: "shatter",
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 40,
+      ttl: 0.7 + Math.random() * 0.4,
+      age: 0,
+      size: 1.5 + Math.random() * 2.5,
+      drag: 4.2,
+      start: { r: 226, g: 232, b: 240 },
+      end: { r: 51, g: 65, b: 85 },
+    });
+  }
+}
+
+function applyArmorHit(enemy) {
+  if (!enemy.armored) return;
+  enemy.armorHits = (enemy.armorHits || 0) + 1;
+  if (enemy.armorHits >= (enemy.armorBreakThreshold || 2)) {
+    enemy.armored = false;
+    spawnArmorShatter(enemy.x, enemy.y, 14);
+  }
+}
+
+function getAvailableNukeTowers() {
+  return state.towers.filter((tower) => tower.type === "bomb" && (tower.level || 1) >= 5 && !tower.bombNukeGranted);
+}
+
+function getClosestMaxBombTowerToCenter() {
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  let best = null;
+  let bestDist = Infinity;
+  for (const tower of state.towers) {
+    if (tower.type !== "bomb") continue;
+    if ((tower.level || 1) < 5) continue;
+    const dx = tower.x - centerX;
+    const dy = tower.y - centerY;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = tower;
+    }
+  }
+  return best;
+}
+
+function launchNukeFrom(x, y) {
+  const target = { x: canvas.width / 2, y: canvas.height / 2 };
+  const start = { x, y };
+  const apexHeight = Math.min(start.y, target.y) - 260;
+  const control = {
+    x: (start.x + target.x) / 2,
+    y: Math.max(60, apexHeight),
+  };
+  state.nukeLaunches.push({
+    start,
+    control,
+    end: target,
+    age: 0,
+    duration: 3.4,
+    detonated: false,
+  });
+}
+
+function penalizeRandomTowers() {
+  const candidates = state.towers.filter((tower) => {
+    if (tower.type === "wall" || tower.type === "mine") return false;
+    return (tower.level || 1) > 3;
+  });
+  if (candidates.length === 0) return;
+  for (let i = candidates.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  const picks = candidates.slice(0, 5);
+  for (const tower of picks) {
+    tower.level = Math.max(1, (tower.level || 1) - 3);
+  }
+}
+
+function updateNukeLaunches(dt) {
+  const remaining = [];
+  for (const launch of state.nukeLaunches) {
+    launch.age += dt;
+    const progress = Math.min(1, launch.age / launch.duration);
+    const pos = quadraticBezier(launch.start, launch.control, launch.end, progress);
+    const tangent = quadraticBezierTangent(launch.start, launch.control, launch.end, progress);
+    const angle = Math.atan2(tangent.y, tangent.x);
+    launch.x = pos.x;
+    launch.y = pos.y;
+    launch.rotation = angle + Math.PI / 2;
+    launch.scale = 0.7 + Math.sin(progress * Math.PI) * 0.5;
+    const tailOffset = 30 * (launch.scale || 1);
+    const tailX = launch.x - Math.cos(angle) * tailOffset;
+    const tailY = launch.y - Math.sin(angle) * tailOffset;
+    const embers = Math.max(2, Math.round(12 * dt));
+    spawnNukeEmbers(tailX, tailY, embers);
+    if (launch.age >= launch.duration && !launch.detonated) {
+      launch.detonated = true;
+      const impactX = launch.end.x;
+      const impactY = launch.end.y;
+      state.projectiles = [];
+      state.beams = [];
+      state.enemies = [];
+      state.explosions = [];
+      state.nukeParticles = [];
+      spawnNukeSmokeCloud(impactX, impactY, 360);
+      triggerScreenShake(18, 0.7);
+      state.radioactiveWave = state.wave + 1;
+      state.encyclopedia.add("radioactive");
+      updateEncyclopedia();
+      penalizeRandomTowers();
+    }
+    if (launch.age < launch.duration) {
+      remaining.push(launch);
+    }
+  }
+  state.nukeLaunches = remaining;
+}
+
 function updateSpawner(dt) {
   if (!state.waveInProgress) return;
   state.spawnTimer -= dt * state.waveSpeed;
@@ -1497,6 +2234,9 @@ function updateSpawner(dt) {
   }
   if (state.enemiesToSpawn === 0 && state.enemies.length === 0) {
     state.waveInProgress = false;
+    if (state.radioactiveWave === state.wave) {
+      state.radioactiveWave = null;
+    }
   }
 }
 
@@ -1545,7 +2285,7 @@ function drawPath() {
 function drawPortal() {
   const points = state.pathPoints.length > 0 ? state.pathPoints : path;
   const origin = points[0];
-  const t = performance.now();
+  const t = state.portalClock;
   const pulse = 0.5 + Math.sin(t * 0.004) * 0.5;
   const outer = 26 + pulse * 6;
   ctx.save();
@@ -1599,9 +2339,13 @@ function drawPortal() {
   ctx.restore();
 }
 
-function drawCastle() {
+function getCastlePoint() {
   const points = state.pathPoints.length > 0 ? state.pathPoints : path;
-  const target = points[points.length - 1];
+  return points[points.length - 1];
+}
+
+function drawCastle() {
+  const target = getCastlePoint();
   ctx.save();
   ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
   ctx.fillRect(target.x - 30, target.y - 22, 60, 40);
@@ -1797,6 +2541,24 @@ function drawTowers() {
         ctx.moveTo(tower.x - 10, tower.y - 6);
         ctx.lineTo(tower.x + 12, tower.y + 8);
         ctx.stroke();
+      } else if (tower.type === "flame") {
+        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+        ctx.beginPath();
+        ctx.arc(tower.x, tower.y, 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(249, 115, 22, 0.85)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = "rgba(251, 146, 60, 0.9)";
+        ctx.beginPath();
+        ctx.arc(tower.x + 4, tower.y - 6, 4, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (tower.type === "trap") {
+        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+        ctx.fillRect(tower.x - 12, tower.y - 12, 24, 24);
+        ctx.strokeStyle = "rgba(250, 204, 21, 0.8)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(tower.x - 12, tower.y - 12, 24, 24);
       } else if (tower.type === "op") {
         ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
         ctx.beginPath();
@@ -1845,6 +2607,35 @@ function drawTowers() {
       ctx.arc(tower.x, tower.y, range, 0, Math.PI * 2);
       ctx.stroke();
     }
+  }
+}
+
+function drawTraps() {
+  for (const trap of state.traps) {
+    if (trap.turret) {
+      ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+      ctx.beginPath();
+      ctx.arc(trap.x, trap.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(250, 204, 21, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      continue;
+    }
+    if (trap.explode) {
+      ctx.fillStyle = "rgba(248, 113, 113, 0.9)";
+      ctx.beginPath();
+      ctx.arc(trap.x, trap.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    ctx.fillStyle = "rgba(250, 204, 21, 0.9)";
+    ctx.beginPath();
+    ctx.moveTo(trap.x - 8, trap.y + 6);
+    ctx.lineTo(trap.x + 8, trap.y + 6);
+    ctx.lineTo(trap.x, trap.y - 8);
+    ctx.closePath();
+    ctx.fill();
   }
 }
 
@@ -2145,6 +2936,62 @@ function drawExplosions() {
   }
 }
 
+function drawNukeLaunches() {
+  for (const launch of state.nukeLaunches) {
+    const x = launch.x ?? launch.start.x;
+    const y = launch.y ?? launch.start.y;
+    const rotation = launch.rotation ?? 0;
+    const scale = launch.scale ?? 1;
+    ctx.save();
+    if (nukeImage.complete && nukeImage.naturalWidth) {
+      const base = 64;
+      ctx.translate(x, y);
+      ctx.rotate(rotation);
+      ctx.scale(scale, scale);
+      ctx.drawImage(nukeImage, -base * 0.5, -base * 0.8, base, base * 1.6);
+    } else {
+      ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawNukeParticles() {
+  for (const particle of state.nukeParticles) {
+    const life = particle.ttl > 0 ? particle.age / particle.ttl : 1;
+    const color = lerpColor(particle.start, particle.end, life);
+    const alpha = (particle.kind === "ember" ? 0.95 : 0.75) * (1 - life);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    ctx.beginPath();
+    ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawFlames() {
+  for (const flame of state.flames) {
+    const grad = ctx.createRadialGradient(flame.x, flame.y, 8, flame.x, flame.y, flame.range);
+    grad.addColorStop(0, "rgba(249, 115, 22, 0.45)");
+    grad.addColorStop(0.5, "rgba(249, 115, 22, 0.2)");
+    grad.addColorStop(1, "rgba(15, 23, 42, 0)");
+    ctx.save();
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(flame.x, flame.y);
+    ctx.arc(flame.x, flame.y, flame.range, flame.angle - flame.spread * 0.5, flame.angle + flame.spread * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawBeams() {
   for (const beam of state.beams) {
     ctx.strokeStyle = beam.color;
@@ -2210,13 +3057,21 @@ function drawBackground() {
 }
 
 function draw() {
+  const shake = getScreenShakeOffset();
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
   drawBackground();
   drawTowers();
+  drawTraps();
   drawEnemies();
   drawProjectiles();
   drawExplosions();
+  drawNukeParticles();
+  drawNukeLaunches();
+  drawFlames();
   drawBeams();
   drawPlacementPreview();
+  ctx.restore();
   if (state.selectedTower && state.selectedTower.type !== "wall" && state.selectedTower.type !== "mine") {
     ctx.fillStyle = "#e2e8f0";
     ctx.fillText("Click to upgrade (50)", 18, canvas.height - 20);
@@ -2245,6 +3100,9 @@ function update(dt) {
     return;
   }
   const simDt = dt * (state.waveSpeed || 1);
+  if (!state.paused) {
+    state.portalClock += dt * 1000;
+  }
   state.damageFlashCooldown = Math.max(0, state.damageFlashCooldown - dt);
   if (state.lives < state.lastLives && state.damageFlashCooldown <= 0 && !state.damageFlashActive) {
     state.damageFlashActive = true;
@@ -2268,9 +3126,13 @@ function update(dt) {
   updateSpawner(dt);
   updateEnemies(simDt);
   updateMines();
+  updateTraps(simDt);
   updateTowers(simDt);
   updateProjectiles(simDt);
   updateExplosions(simDt);
+  updateNukeLaunches(simDt);
+  updateNukeParticles(simDt);
+  updateFlames(simDt);
   updateBeams(simDt);
   updateHud();
   updateUpgradePanel();
@@ -2291,6 +3153,9 @@ state.mouse = { x: 0, y: 0 };
 function loop(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
+  if (state.screenShakeTime > 0) {
+    state.screenShakeTime = Math.max(0, state.screenShakeTime - dt);
+  }
   update(dt);
   draw();
   requestAnimationFrame(loop);
@@ -2348,6 +3213,15 @@ ui.buildLaser.addEventListener("click", () => {
   state.placing = "laser";
 });
 
+ui.buildFlame.addEventListener("click", () => {
+  const cost = towerTypes.flame.cost;
+  if (!canAfford(cost)) {
+    flashButton(buildButtons.flame);
+    return;
+  }
+  state.placing = "flame";
+});
+
 ui.buildDart.addEventListener("click", () => {
   const cost = towerTypes.dart.cost;
   if (!canAfford(cost)) {
@@ -2355,6 +3229,15 @@ ui.buildDart.addEventListener("click", () => {
     return;
   }
   state.placing = "dart";
+});
+
+ui.buildTrap.addEventListener("click", () => {
+  const cost = towerTypes.trap.cost;
+  if (!canAfford(cost)) {
+    flashButton(buildButtons.trap);
+    return;
+  }
+  state.placing = "trap";
 });
 
 ui.buildMine.addEventListener("click", () => {
@@ -2389,47 +3272,21 @@ ui.startWave.addEventListener("click", startWave);
 
 if (ui.pauseWave) {
   ui.pauseWave.addEventListener("click", () => {
-    if (!state.waveInProgress) return;
-    if (!state.paused) {
-      if (!state.infiniteGold && state.gold <= 0) {
-        flashButton(ui.pauseWave);
-        return;
-      }
-      state.paused = true;
-    } else {
-      state.paused = false;
-    }
-    ui.pauseWave.textContent = state.paused ? "Resume Wave" : "Pause Wave";
-    if (ui.playArea) {
-      ui.playArea.classList.toggle("paused-glitch", state.paused);
-    }
+    togglePauseWave();
   });
 }
 
 if (ui.nukeButton) {
   ui.nukeButton.addEventListener("click", () => {
-    if (state.nukeUsed) return;
-    const nukeCost = 400;
-    if (!canAfford(nukeCost)) {
-      flashButton(ui.nukeButton);
-      return;
+    if (state.nukeCharges <= 0) return;
+    const source = getClosestMaxBombTowerToCenter();
+    if (source) {
+      launchNukeFrom(source.x, source.y - 20);
+    } else {
+      const castle = getCastlePoint();
+      launchNukeFrom(castle.x, castle.y - 28);
     }
-    payCost(nukeCost);
-    state.enemies = [];
-    state.projectiles = [];
-    state.beams = [];
-    state.explosions.push({
-      x: canvas.width / 2,
-      y: canvas.height / 2,
-      radius: Math.max(canvas.width, canvas.height),
-      ttl: 0.5,
-      color: "rgba(248, 113, 113, 0.55)",
-    });
-    for (const tower of state.towers) {
-      if (tower.type === "wall" || tower.type === "mine") continue;
-      tower.nukePenalty = (tower.nukePenalty || 1) * 0.5;
-    }
-    state.nukeUsed = true;
+    state.nukeCharges -= 1;
     updateHud();
   });
 }
@@ -2455,6 +3312,7 @@ if (ui.upgradeTo) {
     const tower = state.selectedTower;
     if (!tower) return;
     if (tower.type === "wall" || tower.type === "mine") return;
+    if (tower.type === "bomb" && (tower.level || 1) >= 5) return;
     const current = tower.level || 1;
     const targetRaw = Number.parseInt(ui.upgradeTarget?.value || `${current}`, 10);
     if (!Number.isFinite(targetRaw)) return;
@@ -2467,6 +3325,10 @@ if (ui.upgradeTo) {
     }
     payCost(totalCost);
     tower.level = target;
+    if (tower.type === "bomb" && tower.level >= 5 && !tower.bombNukeGranted) {
+      tower.bombNukeGranted = true;
+      state.nukeCharges += 1;
+    }
     updateHud();
   });
 }
@@ -2486,6 +3348,37 @@ if (ui.watchPath2) {
     if (!state.selectedTower || state.selectedTower.type !== "watch") return;
     state.selectedTower.upgradePath = 2;
     upgradeTower(state.selectedTower);
+  });
+}
+
+if (ui.trapPath1) {
+  ui.trapPath1.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "trap") return;
+    state.selectedTower.upgradePath = 1;
+    upgradeTower(state.selectedTower);
+  });
+}
+
+if (ui.trapPath2) {
+  ui.trapPath2.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "trap") return;
+    state.selectedTower.upgradePath = 2;
+    upgradeTower(state.selectedTower);
+  });
+}
+
+if (ui.targetingMode) {
+  ui.targetingMode.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const tower = state.selectedTower;
+    if (!tower || tower.type === "wall" || tower.type === "mine") return;
+    const current = tower.targeting || "first";
+    const idx = targetingModes.indexOf(current);
+    const next = targetingModes[(idx + 1) % targetingModes.length];
+    tower.targeting = next;
+    updateUpgradePanel();
   });
 }
 
@@ -2551,9 +3444,21 @@ if (ui.openTips) {
   });
 }
 
+if (ui.openTutorial) {
+  ui.openTutorial.addEventListener("click", () => {
+    ui.tutorialModal?.classList.remove("hidden");
+  });
+}
+
 if (ui.closeTips) {
   ui.closeTips.addEventListener("click", () => {
     ui.tipsModal?.classList.add("hidden");
+  });
+}
+
+if (ui.closeTutorial) {
+  ui.closeTutorial.addEventListener("click", () => {
+    ui.tutorialModal?.classList.add("hidden");
   });
 }
 
@@ -2566,6 +3471,19 @@ if (ui.tipsModal) {
     }
     if (event.target === ui.tipsModal) {
       ui.tipsModal.classList.add("hidden");
+    }
+  });
+}
+
+if (ui.tutorialModal) {
+  ui.tutorialModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target && target.closest && target.closest("[data-close='tutorial']")) {
+      ui.tutorialModal.classList.add("hidden");
+      return;
+    }
+    if (event.target === ui.tutorialModal) {
+      ui.tutorialModal.classList.add("hidden");
     }
   });
 }
@@ -2642,6 +3560,10 @@ if (ui.tipsModal) {
   ui.tipsModal.classList.add("hidden");
 }
 
+if (ui.tutorialModal) {
+  ui.tutorialModal.classList.add("hidden");
+}
+
 if (ui.jasperModal) {
   ui.jasperModal.classList.add("hidden");
 }
@@ -2657,6 +3579,10 @@ function resetGame() {
   state.projectiles = [];
   state.beams = [];
   state.explosions = [];
+  state.flames = [];
+  state.traps = [];
+  state.nukeLaunches = [];
+  state.nukeParticles = [];
   state.selectedTower = null;
   state.waveInProgress = false;
   state.paused = false;
@@ -2664,7 +3590,12 @@ function resetGame() {
   state.lastLives = state.lives;
   state.damageFlashCooldown = 0;
   state.damageFlashActive = false;
+  state.screenShakeTime = 0;
+  state.screenShakeDuration = 0;
+  state.screenShakePower = 0;
+  state.radioactiveWave = null;
   state.nukeUsed = false;
+  state.nukeCharges = 0;
   state.spawnTimer = 0;
   state.enemiesToSpawn = 0;
   state.easterUnlocked = false;
@@ -2680,6 +3611,7 @@ function resetGame() {
   state.infiniteGold = false;
   state.keyBuffer = "";
   state.jasperProgress = 0;
+  state.portalClock = 0;
   if (ui.jasperControls) ui.jasperControls.classList.add("hidden");
   if (ui.autoWave) ui.autoWave.textContent = "Auto Next Wave: Off";
   if (ui.waveSpeed) ui.waveSpeed.value = "1";
@@ -2691,6 +3623,7 @@ function resetGame() {
   if (ui.playArea) ui.playArea.classList.remove("paused-glitch");
   if (ui.encyclopediaModal) ui.encyclopediaModal.classList.add("hidden");
   if (ui.tipsModal) ui.tipsModal.classList.add("hidden");
+  if (ui.tutorialModal) ui.tutorialModal.classList.add("hidden");
   if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
   recomputeGlobalPath();
   updateHud();
@@ -2739,11 +3672,16 @@ function tryUnlockInfiniteGold() {
 window.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
     event.preventDefault();
-    startWave();
+    if (state.waveInProgress) {
+      togglePauseWave();
+    } else {
+      startWave();
+    }
   }
   if (event.key === "Escape") {
     if (ui.encyclopediaModal) ui.encyclopediaModal.classList.add("hidden");
     if (ui.tipsModal) ui.tipsModal.classList.add("hidden");
+    if (ui.tutorialModal) ui.tutorialModal.classList.add("hidden");
     if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
   }
   if (event.key.toLowerCase() === "d") {

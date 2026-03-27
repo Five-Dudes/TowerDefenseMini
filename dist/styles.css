@@ -20,24 +20,25 @@ body {
   color: var(--text);
   min-height: 100vh;
   overflow: auto;
-  font-size: 0.88rem;
+  overflow-x: hidden;
+  font-size: 0.84rem;
 }
 
 .app {
-  max-width: 1040px;
+  max-width: 1000px;
   margin: 0 auto;
-  padding: 10px;
+  padding: 8px;
   position: relative;
 }
 
 .topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 10px;
   align-items: center;
   background: rgba(6, 14, 28, 0.85);
   border: 1px solid rgba(56, 189, 248, 0.25);
-  padding: 7px 10px;
+  padding: 5px 8px;
   border-radius: 16px;
   backdrop-filter: blur(10px);
   box-shadow: 0 12px 35px rgba(3, 11, 22, 0.55);
@@ -45,9 +46,13 @@ body {
 
 .topbar-actions {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
   justify-content: center;
+}
+
+.topbar-actions button {
+  white-space: nowrap;
 }
 
 .topbar-secondary {
@@ -58,7 +63,7 @@ body {
 
 .topbar h1 {
   margin: 0 0 6px;
-  font-size: 1.2rem;
+  font-size: 1.06rem;
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -77,34 +82,34 @@ body {
 
 .play {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 8px;
-  margin-top: 8px;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .game-column {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .game-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   justify-content: center;
   align-items: center;
-  gap: 4px;
-  margin-top: 2px;
+  gap: 8px;
+  margin-top: 0;
 }
 
 .btn-nuke {
-  width: 120px;
-  height: 120px;
+  width: 104px;
+  height: 104px;
   border-radius: 999px;
   background: radial-gradient(circle at 30% 30%, #fecaca 0%, #ef4444 35%, #b91c1c 100%);
   border: 2px solid #7f1d1d;
   color: #fff;
-  font-size: 1.1rem;
+  font-size: 1rem;
   letter-spacing: 0.12em;
   box-shadow: 0 14px 24px rgba(127, 29, 29, 0.55), inset 0 -8px 18px rgba(0, 0, 0, 0.4);
 }
@@ -114,7 +119,7 @@ body {
 }
 
 .nuke-cost {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
@@ -155,7 +160,7 @@ canvas {
 .panel {
   background: var(--panel);
   border: 1px solid rgba(56, 189, 248, 0.2);
-  padding: 12px;
+  padding: 10px;
   border-radius: 16px;
   display: flex;
   flex-direction: column;
@@ -165,8 +170,8 @@ canvas {
 
 .panel-grid {
   display: grid;
-  grid-template-columns: minmax(120px, 140px) minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(100px, 120px) minmax(0, 1fr);
+  gap: 6px;
 }
 
 .upgrade-panel {
@@ -194,7 +199,7 @@ button {
   appearance: none;
   border: 1px solid rgba(56, 189, 248, 0.35);
   border-radius: 10px;
-  padding: 5px 7px;
+  padding: 4px 5px;
   background: linear-gradient(135deg, rgba(9, 17, 34, 0.9), rgba(10, 26, 52, 0.9));
   color: var(--text);
   cursor: pointer;
@@ -216,8 +221,8 @@ button:hover {
 }
 
 .btn-small {
-  font-size: 0.7rem;
-  padding: 4px 6px;
+  font-size: 0.66rem;
+  padding: 3px 4px;
   letter-spacing: 0.04em;
 }
 
@@ -226,6 +231,8 @@ button:hover {
   color: #1f2937;
   border: 1px solid rgba(250, 204, 21, 0.9);
   box-shadow: 0 0 18px rgba(250, 204, 21, 0.4);
+  padding: 3px 5px;
+  font-size: 0.64rem;
 }
 
 .btn-jasper:hover {
