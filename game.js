@@ -4785,15 +4785,7 @@ function drawProjectiles() {
       ctx.beginPath();
       ctx.moveTo(10, 0);
       ctx.lineTo(-6, 5);
-      ctx.lineTo(-8, 0);
       ctx.lineTo(-6, -5);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "rgba(251, 191, 36, 0.8)";
-      ctx.beginPath();
-      ctx.moveTo(-8, 0);
-      ctx.lineTo(-12, 3);
-      ctx.lineTo(-12, -3);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
@@ -5496,7 +5488,6 @@ if (ui.applyWave) {
 
 if (ui.waveSpeed) {
   ui.waveSpeed.addEventListener("change", () => {
-    if (!state.infiniteGold) return;
     const value = Number.parseFloat(ui.waveSpeed.value);
     state.waveSpeed = Number.isFinite(value) ? value : 1;
   });
@@ -5521,7 +5512,6 @@ if (ui.towerLevelCap) {
 
 if (ui.autoWave) {
   ui.autoWave.addEventListener("click", () => {
-    if (!state.infiniteGold) return;
     state.autoWave = !state.autoWave;
     ui.autoWave.textContent = `Auto Next Wave: ${state.autoWave ? "On" : "Off"}`;
   });
@@ -5561,9 +5551,15 @@ if (ui.openTips) {
 }
 
 if (ui.openTutorial) {
-  ui.openTutorial.addEventListener("click", () => {
+  const openTutorialHandler = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     ui.tutorialModal?.classList.remove("hidden");
-  });
+  };
+  ui.openTutorial.addEventListener("click", openTutorialHandler);
+  ui.openTutorial.addEventListener("pointerdown", openTutorialHandler);
 }
 
 if (ui.closeTips) {
@@ -5658,22 +5654,30 @@ if (ui.jasperModal) {
 const titleScreen = document.getElementById("title-screen");
 if (titleScreen) {
   const buttons = titleScreen.querySelectorAll("[data-difficulty]");
+  const selectDifficulty = (difficulty) => {
+    if (difficulty === "easy") {
+      state.difficultyMultipliers = { enemyHp: 0.85, enemySpeed: 0.9, gold: 1.2 };
+    } else if (difficulty === "hard") {
+      state.difficultyMultipliers = { enemyHp: 1.25, enemySpeed: 1.1, gold: 0.9 };
+    } else {
+      state.difficultyMultipliers = { enemyHp: 1, enemySpeed: 1, gold: 1 };
+    }
+    state.difficulty = difficulty;
+    state.gameStarted = true;
+    titleScreen.classList.add("hidden");
+    if (ui.gameOver) ui.gameOver.classList.add("hidden");
+    updateHud();
+  };
   buttons.forEach((button) => {
-    button.addEventListener("click", () => {
+    const handler = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       const difficulty = button.dataset.difficulty;
-      if (difficulty === "easy") {
-        state.difficultyMultipliers = { enemyHp: 0.85, enemySpeed: 0.9, gold: 1.2 };
-      } else if (difficulty === "hard") {
-        state.difficultyMultipliers = { enemyHp: 1.25, enemySpeed: 1.1, gold: 0.9 };
-      } else {
-        state.difficultyMultipliers = { enemyHp: 1, enemySpeed: 1, gold: 1 };
-      }
-      state.difficulty = difficulty;
-      state.gameStarted = true;
-      titleScreen.classList.add("hidden");
-      if (ui.gameOver) ui.gameOver.classList.add("hidden");
-      updateHud();
-    });
+      if (!difficulty) return;
+      selectDifficulty(difficulty);
+    };
+    button.addEventListener("click", handler);
+    button.addEventListener("pointerdown", handler);
   });
 }
 
@@ -5761,18 +5765,30 @@ function resetGame() {
 }
 
 if (ui.restartGame) {
-  ui.restartGame.addEventListener("click", () => {
+  const restartHandler = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     resetGame();
     if (ui.gameOver) ui.gameOver.classList.add("hidden");
-  });
+  };
+  ui.restartGame.addEventListener("click", restartHandler);
+  ui.restartGame.addEventListener("pointerdown", restartHandler);
 }
 
 if (ui.mainMenu) {
-  ui.mainMenu.addEventListener("click", () => {
+  const menuHandler = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     resetGame();
     if (ui.gameOver) ui.gameOver.classList.add("hidden");
     if (titleScreen) titleScreen.classList.remove("hidden");
-  });
+  };
+  ui.mainMenu.addEventListener("click", menuHandler);
+  ui.mainMenu.addEventListener("pointerdown", menuHandler);
 }
 
 function tryUnlockOpTower() {

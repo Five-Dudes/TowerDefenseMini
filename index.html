@@ -43,6 +43,16 @@
         <div class="topbar-actions">
           <button id="start-wave">Start Wave</button>
           <button id="pause-wave">Pause Wave</button>
+          <div class="wave-controls">
+            <label for="wave-speed" class="inline-label">Wave Speed</label>
+            <select id="wave-speed">
+              <option value="1">1x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2x</option>
+              <option value="3">3x</option>
+            </select>
+            <button id="auto-wave">Auto Next Wave: Off</button>
+          </div>
         </div>
         <div class="topbar-secondary">
           <button id="open-jasper" class="btn-small btn-jasper hidden">Jasper Menu</button>
@@ -224,19 +234,9 @@
             <button id="apply-wave">Apply</button>
           </div>
           <div class="control-row">
-            <label for="wave-speed">Wave Speed</label>
-            <select id="wave-speed">
-              <option value="1">1x</option>
-              <option value="1.5">1.5x</option>
-              <option value="2">2x</option>
-              <option value="3">3x</option>
-            </select>
-          </div>
-          <div class="control-row">
             <label for="tower-level-cap">Tower Level Cap</label>
             <input id="tower-level-cap" type="number" min="0" value="5" placeholder="∞" />
           </div>
-          <button id="auto-wave">Auto Next Wave: Off</button>
           <div class="control-row">
             <label for="spawn-enemy-type">Spawn Enemy</label>
             <select id="spawn-enemy-type">

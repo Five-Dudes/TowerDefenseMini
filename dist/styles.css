@@ -460,6 +460,7 @@ kbd {
   border-radius: 16px;
   border: 1px solid rgba(56, 189, 248, 0.2);
   pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .title-screen * {
@@ -475,6 +476,9 @@ kbd {
   max-width: 360px;
   box-shadow: 0 20px 50px rgba(2, 6, 23, 0.7);
   pointer-events: auto;
+  position: relative;
+  z-index: 2;
+  touch-action: manipulation;
 }
 
 .title-card h1 {
@@ -610,4 +614,17 @@ kbd {
   .play {
     grid-template-columns: 1fr;
   }
+}
+.wave-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inline-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
