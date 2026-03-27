@@ -59,6 +59,9 @@ const ui = {
   bombUpgradeActions: document.getElementById("bomb-upgrade-actions"),
   bombPath1: document.getElementById("bomb-path-1"),
   bombPath2: document.getElementById("bomb-path-2"),
+  dartUpgradeActions: document.getElementById("dart-upgrade-actions"),
+  dartPath1: document.getElementById("dart-path-1"),
+  dartPath2: document.getElementById("dart-path-2"),
   trapUpgradeActions: document.getElementById("trap-upgrade-actions"),
   trapPath1: document.getElementById("trap-path-1"),
   trapPath2: document.getElementById("trap-path-2"),
@@ -927,6 +930,9 @@ function placeTower(type, x, y) {
     tower.upgradePath = 1;
     tower.trapCooldown = 0;
   }
+  if (type === "dart") {
+    tower.upgradePath = 1;
+  }
   if (type === "freeze") {
     tower.upgradePath = 1;
   }
@@ -1053,6 +1059,14 @@ function getTowerStats(tower) {
   let bombClusterRadius = 0;
   let bombClusterChildDamage = 0;
   let bombClusterChildRadius = 0;
+  let dartPoisonDps = data.poisonDps || 0;
+  let dartPoisonDuration = data.poisonDuration || 0;
+  let dartPoisonRadius = 0;
+  let dartBurstCount = 1;
+  let dartEmbrittlementBonus = 0;
+  let dartArmorWeaken = false;
+  let globalPoisonDps = 0;
+  let globalPoisonDuration = 0;
 
   if (tower.type === "watch") {
     if (!projectileSpeed) {
@@ -1362,6 +1376,34 @@ function getTowerStats(tower) {
         }
       }
     }
+    if (tower.type === "dart") {
+      const tier = Math.min(level, 5);
+      const path = tower.upgradePath || 1;
+      if (path === 1) {
+        if (tier >= 1) dartPoisonDps *= 1.4;
+        if (tier >= 2) dartPoisonDuration += 1.5;
+        if (tier >= 3) {
+          dartPoisonRadius = 50;
+        }
+        if (tier >= 4) {
+          rate *= 0.7;
+          projectileSpeed = (projectileSpeed || data.projectileSpeed || 380) * 1.2;
+        }
+        if (tier >= 5) {
+          globalPoisonDps = 3;
+          globalPoisonDuration = 2.5;
+        }
+      } else {
+        if (tier >= 1) rate *= 0.85;
+        if (tier >= 2) rate *= 0.75;
+        if (tier >= 3) dartBurstCount = 4;
+        if (tier >= 4) dartEmbrittlementBonus = 0.12;
+        if (tier >= 5) {
+          dartEmbrittlementBonus = 0.2;
+          dartArmorWeaken = true;
+        }
+      }
+    }
   }
   if (tower.type === "flame") {
     const tier = Math.min(tower.level, 5);
@@ -1472,6 +1514,14 @@ function getTowerStats(tower) {
     bombClusterRadius,
     bombClusterChildDamage,
     bombClusterChildRadius,
+    dartPoisonDps,
+    dartPoisonDuration,
+    dartPoisonRadius,
+    dartBurstCount,
+    dartEmbrittlementBonus,
+    dartArmorWeaken,
+    globalPoisonDps,
+    globalPoisonDuration,
   };
 }
 
@@ -1514,6 +1564,7 @@ function updateUpgradePanel() {
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
     if (ui.bombUpgradeActions) ui.bombUpgradeActions.classList.add("hidden");
+    if (ui.dartUpgradeActions) ui.dartUpgradeActions.classList.add("hidden");
     if (ui.trapUpgradeActions) ui.trapUpgradeActions.classList.add("hidden");
     if (ui.laserUpgradeActions) ui.laserUpgradeActions.classList.add("hidden");
     if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
@@ -1531,6 +1582,7 @@ function updateUpgradePanel() {
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
     if (ui.bombUpgradeActions) ui.bombUpgradeActions.classList.add("hidden");
+    if (ui.dartUpgradeActions) ui.dartUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
@@ -1556,6 +1608,7 @@ function updateUpgradePanel() {
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
     if (ui.bombUpgradeActions) ui.bombUpgradeActions.classList.add("hidden");
+    if (ui.dartUpgradeActions) ui.dartUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
@@ -1682,6 +1735,38 @@ function updateUpgradePanel() {
       const p2Tier = path === 2 ? tier : 0;
       const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
       ui.bombPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
+    }
+  }
+  if (tower.type === "dart") {
+    const tier = Math.min(tower.level, 5);
+    const path = tower.upgradePath || 1;
+    const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "poison damage increased",
+      "poison duration increased",
+      "poison radius",
+      "dart gun",
+      "poison transfer",
+    ];
+    const path2Upgrades = [
+      "faster attack speed",
+      "even faster attack speed",
+      "dart burst",
+      "embrittlement",
+      "stronger concoction",
+    ];
+    upgradeText = [
+      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
+    ][0];
+    if (ui.dartPath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
+      ui.dartPath1.textContent = `Path 1 (${p1Tier}/5): ${nextP1}`;
+    }
+    if (ui.dartPath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
+      ui.dartPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
     }
   }
   if (tower.type === "drone") {
@@ -1811,6 +1896,9 @@ function updateUpgradePanel() {
   }
   if (ui.bombUpgradeActions) {
     ui.bombUpgradeActions.classList.toggle("hidden", tower.type !== "bomb");
+  }
+  if (ui.dartUpgradeActions) {
+    ui.dartUpgradeActions.classList.toggle("hidden", tower.type !== "dart");
   }
   if (ui.trapUpgradeActions) {
     ui.trapUpgradeActions.classList.toggle("hidden", tower.type !== "trap");
@@ -1958,11 +2046,22 @@ function fireProjectile(tower, enemy, stats) {
   const { data } = stats;
   const damage = stats.damage;
   const sourceType = tower.type;
-  const poisonDps = (data.poisonDps || 0) + (tower.level - 1) * 1.5;
-  const poisonDuration = data.poisonDuration ? data.poisonDuration + (tower.level - 1) * 0.2 : 0;
-  const embrittlementPercent = sourceType === "dart"
+  let poisonDps = (data.poisonDps || 0) + (tower.level - 1) * 1.5;
+  let poisonDuration = data.poisonDuration ? data.poisonDuration + (tower.level - 1) * 0.2 : 0;
+  let embrittlementPercent = sourceType === "dart"
     ? 0.05 + Math.max(0, tower.level - 1) * 0.02
     : 0;
+  let poisonRadius = 0;
+  let burstCount = 1;
+  let armorWeaken = false;
+  if (sourceType === "dart") {
+    poisonDps = stats.dartPoisonDps ?? poisonDps;
+    poisonDuration = stats.dartPoisonDuration ?? poisonDuration;
+    poisonRadius = stats.dartPoisonRadius || 0;
+    burstCount = Math.max(1, stats.dartBurstCount || 1);
+    embrittlementPercent = Math.max(embrittlementPercent, stats.dartEmbrittlementBonus || 0);
+    armorWeaken = Boolean(stats.dartArmorWeaken);
+  }
   if (data.projectileType === "gas") {
     emitFreezeGas(tower, enemy, stats);
     return;
@@ -2026,6 +2125,11 @@ function fireProjectile(tower, enemy, stats) {
     return;
   }
 
+  if (sourceType !== "dart" && state.globalPoisonDps > 0) {
+    poisonDps = Math.max(poisonDps, state.globalPoisonDps);
+    poisonDuration = Math.max(poisonDuration, state.globalPoisonDuration);
+  }
+
   if (data.splashRadius) {
     const burst = Math.max(1, stats.bombBurstCount || 1);
     for (let i = 0; i < burst; i += 1) {
@@ -2049,19 +2153,23 @@ function fireProjectile(tower, enemy, stats) {
     return;
   }
 
-  state.projectiles.push({
-    kind: sourceType === "watch" ? "line" : "homing",
-    x: tower.x,
-    y: tower.y,
-    target: enemy,
-    speed: stats.projectileSpeed || data.projectileSpeed || 320,
-    damage,
-    slow: stats.slow,
-    sourceType,
-    poisonDps,
-    poisonDuration,
-    embrittlementPercent,
-  });
+  for (let i = 0; i < burstCount; i += 1) {
+    state.projectiles.push({
+      kind: sourceType === "watch" ? "line" : "homing",
+      x: tower.x,
+      y: tower.y,
+      target: enemy,
+      speed: stats.projectileSpeed || data.projectileSpeed || 320,
+      damage,
+      slow: stats.slow,
+      sourceType,
+      poisonDps,
+      poisonDuration,
+      embrittlementPercent,
+      poisonRadius,
+      armorWeaken,
+    });
+  }
 }
 
 function fireLaser(tower, enemy, stats, range) {
@@ -2392,6 +2500,21 @@ function updateProjectiles(dt) {
           if (proj.embrittlementPercent > 0) {
             proj.target.embrittleTimer = Math.max(proj.target.embrittleTimer, proj.poisonDuration);
             proj.target.embrittleMultiplier = Math.max(proj.target.embrittleMultiplier || 1, 1 + proj.embrittlementPercent);
+          }
+          if (proj.armorWeaken && proj.target.armored) {
+            applyArmorHit(proj.target);
+            proj.target.armorBreakThreshold = Math.max(1, (proj.target.armorBreakThreshold || 2) - 1);
+          }
+          if (proj.poisonRadius > 0) {
+            for (const splash of state.enemies) {
+              if (splash.hp <= 0) continue;
+              if (splash.darkMatter) continue;
+              const dist = Math.hypot(splash.x - proj.target.x, splash.y - proj.target.y);
+              if (dist <= proj.poisonRadius) {
+                splash.dotTimer = Math.max(splash.dotTimer, proj.poisonDuration * 0.8);
+                splash.dotDps = Math.max(splash.dotDps, proj.poisonDps * 0.7);
+              }
+            }
           }
         }
       }
@@ -2845,6 +2968,9 @@ function updateTowers(dt) {
   if (state.nukeSmoke) {
     return;
   }
+  const poisonTower = state.towers.find((tower) => tower.type === "dart" && (tower.level || 1) >= 5 && tower.upgradePath === 1);
+  state.globalPoisonDps = poisonTower ? 3 : 0;
+  state.globalPoisonDuration = poisonTower ? 2.5 : 0;
   for (const tower of state.towers) {
     const stats = getTowerStats(tower);
     if (!stats) continue;
@@ -4740,6 +4866,32 @@ if (ui.bombPath2) {
   ui.bombPath2.addEventListener("click", (event) => {
     event.stopPropagation();
     if (!state.selectedTower || state.selectedTower.type !== "bomb") return;
+    state.selectedTower.upgradePath = 2;
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
+  });
+}
+
+if (ui.dartPath1) {
+  ui.dartPath1.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "dart") return;
+    state.selectedTower.upgradePath = 1;
+    if ((state.selectedTower.level || 1) < 5) {
+      upgradeTower(state.selectedTower);
+    } else {
+      updateUpgradePanel();
+    }
+  });
+}
+
+if (ui.dartPath2) {
+  ui.dartPath2.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!state.selectedTower || state.selectedTower.type !== "dart") return;
     state.selectedTower.upgradePath = 2;
     if ((state.selectedTower.level || 1) < 5) {
       upgradeTower(state.selectedTower);
