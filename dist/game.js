@@ -864,7 +864,7 @@ function placeTower(type, x, y) {
   const hasWall = state.towers.some((tower) => tower.type === "wall" && !tower.spiky && tower.x === x && tower.y === y);
   if (isOnPath(x, y) && !data.allowOnPath && !hasWall) return;
   if (type === "mine" && !isOnPath(x, y)) return;
-  if (type !== "wall" && type !== "drone" && type !== "op" && type !== "mine") {
+  if (type !== "wall" && type !== "op" && type !== "mine") {
     if (!hasWall) return;
   }
   for (const tower of state.towers) {
