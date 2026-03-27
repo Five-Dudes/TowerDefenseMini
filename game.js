@@ -2101,7 +2101,22 @@ function fireProjectile(tower, enemy, stats) {
         const angle = (i / miniCount) * Math.PI * 2;
         const ox = tower.x + Math.cos(angle) * 16;
         const oy = tower.y + Math.sin(angle) * 16;
-        fireHoming(ox, oy, miniDamage, bulletSpeed * 0.95);
+        const mini = {
+          type: "drone",
+          x: ox,
+          y: oy,
+          baseX: ox,
+          baseY: oy,
+          level: Math.max(1, (tower.level || 1) - 1),
+          cooldown: 0,
+          paidCost: 0,
+          disabled: false,
+          targeting: tower.targeting || "first",
+          isMini: true,
+          parentDrone: tower,
+        };
+        const miniStats = getTowerStats(mini);
+        fireProjectile(mini, enemy, miniStats);
       }
     }
     if (stats.droneMissiles > 0) {
@@ -3805,9 +3820,10 @@ function drawTowers() {
           ctx.lineTo(tower.baseX + 6, tower.baseY);
           ctx.stroke();
         }
+        const miniScale = tower.isMini ? 0.65 : 1;
         ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
         ctx.beginPath();
-        ctx.arc(tower.x, tower.y, 10, 0, Math.PI * 2);
+        ctx.arc(tower.x, tower.y, 10 * miniScale, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = "rgba(34, 211, 238, 0.7)";
         ctx.lineWidth = 2;
@@ -3815,18 +3831,18 @@ function drawTowers() {
         ctx.strokeStyle = "rgba(34, 211, 238, 0.8)";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(tower.x - 18, tower.y);
-        ctx.lineTo(tower.x - 8, tower.y);
-        ctx.moveTo(tower.x + 18, tower.y);
-        ctx.lineTo(tower.x + 8, tower.y);
-        ctx.moveTo(tower.x, tower.y - 18);
-        ctx.lineTo(tower.x, tower.y - 8);
-        ctx.moveTo(tower.x, tower.y + 18);
-        ctx.lineTo(tower.x, tower.y + 8);
+        ctx.moveTo(tower.x - 18 * miniScale, tower.y);
+        ctx.lineTo(tower.x - 8 * miniScale, tower.y);
+        ctx.moveTo(tower.x + 18 * miniScale, tower.y);
+        ctx.lineTo(tower.x + 8 * miniScale, tower.y);
+        ctx.moveTo(tower.x, tower.y - 18 * miniScale);
+        ctx.lineTo(tower.x, tower.y - 8 * miniScale);
+        ctx.moveTo(tower.x, tower.y + 18 * miniScale);
+        ctx.lineTo(tower.x, tower.y + 8 * miniScale);
         ctx.stroke();
         ctx.fillStyle = "rgba(56, 189, 248, 0.75)";
         ctx.beginPath();
-        ctx.arc(tower.x, tower.y, 3, 0, Math.PI * 2);
+        ctx.arc(tower.x, tower.y, 3 * miniScale, 0, Math.PI * 2);
         ctx.fill();
       } else if (tower.type === "bomb") {
         ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
@@ -4587,6 +4603,7 @@ function update(dt) {
 
 let lastTime = performance.now();
 state.mouse = { x: 0, y: 0 };
+state.draggingDrone = null;
 
 function loop(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
@@ -4604,6 +4621,10 @@ canvas.addEventListener("mousemove", (event) => {
   const rect = canvas.getBoundingClientRect();
   state.mouse.x = ((event.clientX - rect.left) / rect.width) * canvas.width;
   state.mouse.y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+  if (state.draggingDrone) {
+    state.draggingDrone.x = state.mouse.x;
+    state.draggingDrone.y = state.mouse.y;
+  }
 });
 
 ui.buildWatch.addEventListener("click", () => {
@@ -4752,9 +4773,10 @@ if (ui.upgradePanel) {
     if (tower.type === "wall" || tower.type === "mine") return;
     if (tower.type === "bomb" && (tower.level || 1) >= state.towerLevelCap) return;
     const current = tower.level || 1;
-    const targetRaw = Number.parseInt(ui.upgradeTarget?.value || `${current}`, 10);
+    const targetRaw = Number.parseInt(ui.upgradeTarget?.value || "1", 10);
     if (!Number.isFinite(targetRaw)) return;
-    const target = Math.max(1, Math.min(state.towerLevelCap, targetRaw));
+    const delta = Math.max(1, targetRaw);
+    const target = Math.min(state.towerLevelCap, current + delta);
     if (target <= current) return;
     const totalCost = getUpgradeCostToLevel(current, target);
     if (!canAfford(totalCost)) {
@@ -5047,7 +5069,7 @@ if (ui.towerLevelCap) {
   ui.towerLevelCap.addEventListener("change", () => {
     if (!state.infiniteGold) return;
     const raw = Number.parseInt(ui.towerLevelCap.value || "5", 10);
-    const cap = Math.max(1, Math.min(10, Number.isFinite(raw) ? raw : 5));
+    const cap = Math.max(1, Number.isFinite(raw) ? raw : 5);
     state.towerLevelCap = cap;
     ui.towerLevelCap.value = `${cap}`;
     updateUpgradePanel();
@@ -5401,6 +5423,34 @@ window.addEventListener("blur", () => {
 canvas.addEventListener("dblclick", () => {
   if (state.selectedTower) {
     upgradeTower(state.selectedTower);
+  }
+});
+
+canvas.addEventListener("mousedown", (event) => {
+  if (!state.infiniteGold) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+  const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+  let closest = null;
+  let closestDist = 18;
+  for (const tower of state.towers) {
+    if (tower.type !== "drone") continue;
+    if (tower.isMini) continue;
+    const dist = Math.hypot(tower.x - x, tower.y - y);
+    if (dist <= closestDist) {
+      closest = tower;
+      closestDist = dist;
+    }
+  }
+  if (closest) {
+    state.draggingDrone = closest;
+  }
+});
+
+canvas.addEventListener("mouseup", () => {
+  if (state.draggingDrone) {
+    state.draggingDrone.forceReturn = true;
+    state.draggingDrone = null;
   }
 });
 
