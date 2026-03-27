@@ -166,13 +166,7 @@ const state = {
     enemySpeed: 1,
     gold: 1,
   },
-  shadowSeeds: Array.from({ length: 8 }, (_, i) => ({
-    x: (i * 137) % 960,
-    y: (i * 83) % 540,
-    speed: 5 + (i % 3) * 3,
-    size: 22 + (i % 4) * 6,
-  })),
-  portalClock: 0,
+  shadowSeeds: [],
   nukeLaunches: [],
   nukeParticles: [],
   screenShakeTime: 0,
@@ -4020,63 +4014,6 @@ function drawPath() {
   ctx.restore();
 }
 
-function drawPortal() {
-  const points = state.pathPoints.length > 0 ? state.pathPoints : path;
-  const origin = points[0];
-  const t = state.portalClock;
-  const pulse = 0.5 + Math.sin(t * 0.004) * 0.5;
-  const outer = 26 + pulse * 6;
-  ctx.save();
-  const glow = ctx.createRadialGradient(origin.x, origin.y, 4, origin.x, origin.y, outer + 16);
-  glow.addColorStop(0, "rgba(217, 70, 239, 0.95)");
-  glow.addColorStop(0.5, "rgba(147, 51, 234, 0.6)");
-  glow.addColorStop(1, "rgba(147, 51, 234, 0)");
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(origin.x, origin.y, outer + 16, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = "rgba(217, 70, 239, 0.75)";
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.arc(origin.x, origin.y, outer, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(168, 85, 247, 0.7)";
-  ctx.lineWidth = 3;
-  ctx.setLineDash([4, 6]);
-  ctx.beginPath();
-  ctx.arc(origin.x, origin.y, outer - 6, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = "rgba(10, 7, 20, 0.9)";
-  ctx.beginPath();
-  ctx.arc(origin.x, origin.y, outer - 12, 0, Math.PI * 2);
-  ctx.fill();
-
-  const arcs = 5;
-  for (let i = 0; i < arcs; i += 1) {
-    const start = (t * 0.002 + i * 1.4) % (Math.PI * 2);
-    const end = start + 0.6 + Math.sin(t * 0.003 + i) * 0.2;
-    ctx.strokeStyle = "rgba(192, 132, 252, 0.6)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(origin.x, origin.y, outer - 2 - i, start, end);
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < 6; i += 1) {
-    const angle = t * 0.004 + i * 1.1;
-    const r = outer - 10 + Math.sin(t * 0.005 + i) * 4;
-    const x = origin.x + Math.cos(angle) * r;
-    const y = origin.y + Math.sin(angle) * r;
-    ctx.fillStyle = "rgba(233, 213, 255, 0.7)";
-    ctx.beginPath();
-    ctx.arc(x, y, 2.4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
 function getCastlePoint() {
   const points = state.pathPoints.length > 0 ? state.pathPoints : path;
   return points[points.length - 1];
@@ -4978,16 +4915,7 @@ function drawBackground() {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  for (const shadow of state.shadowSeeds) {
-    const x = (shadow.x + performance.now() * 0.02 * shadow.speed) % (canvas.width + 120) - 60;
-    const y = (shadow.y + performance.now() * 0.015 * shadow.speed) % (canvas.height + 120) - 60;
-    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
-    ctx.beginPath();
-    ctx.arc(x, y, shadow.size, 0, Math.PI * 2);
-    ctx.fill();
-  }
   drawGrid();
-  drawPortal();
   drawCastle();
   drawPath();
 }
@@ -5038,9 +4966,6 @@ function update(dt) {
     return;
   }
   const simDt = dt * (state.waveSpeed || 1);
-  if (!state.paused) {
-    state.portalClock += dt * 1000;
-  }
   state.damageFlashCooldown = Math.max(0, state.damageFlashCooldown - dt);
   if (state.lives < state.lastLives && state.damageFlashCooldown <= 0 && !state.damageFlashActive) {
     state.damageFlashActive = true;
@@ -5732,7 +5657,6 @@ function resetGame() {
   state.infiniteGold = false;
   state.keyBuffer = "";
   state.jasperProgress = 0;
-  state.portalClock = 0;
   if (ui.jasperControls) ui.jasperControls.classList.add("hidden");
   if (ui.autoWave) ui.autoWave.textContent = "Auto Next Wave: Off";
   if (ui.waveSpeed) ui.waveSpeed.value = "1";
