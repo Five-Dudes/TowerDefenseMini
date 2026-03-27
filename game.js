@@ -3210,8 +3210,8 @@ function updateEnemies(dt) {
       if (!wall.spiky) continue;
       const sides = getWallPathSides(wall.x, wall.y);
       const spikeLevel = wall.spikeLevel || 1;
-      const spikeLen = grid.size - 12 + spikeLevel * 6;
-      const spikeHalf = 10 + spikeLevel * 2;
+      const spikeLen = grid.size - 16 + spikeLevel * 4;
+      const spikeHalf = 8 + spikeLevel * 2;
       const damagePerSecond = 12 + spikeLevel * 6;
       if (sides.left) {
         const edgeX = wall.x - 16;
@@ -3865,6 +3865,28 @@ function drawGrid() {
   }
 }
 
+function drawMines() {
+  for (const tower of state.towers) {
+    const data = towerTypes[tower.type];
+    if (!data || !data.isMine) continue;
+    ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+    ctx.beginPath();
+    ctx.arc(tower.x, tower.y, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(16, 185, 129, 0.75)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(tower.x, tower.y, 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(34, 197, 94, 0.8)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(tower.x - 6, tower.y);
+    ctx.lineTo(tower.x + 6, tower.y);
+    ctx.stroke();
+  }
+}
+
 function drawDroneBody(x, y, scale = 1) {
   ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
   ctx.beginPath();
@@ -3911,8 +3933,8 @@ function drawTowers() {
       if (tower.spiky) {
         const sides = getWallPathSides(tower.x, tower.y);
         const spikeLevel = tower.spikeLevel || 1;
-        const spikeLen = grid.size - 12 + spikeLevel * 6;
-        const spikeHalf = 8 + spikeLevel * 2;
+        const spikeLen = grid.size - 16 + spikeLevel * 4;
+        const spikeHalf = 6 + spikeLevel * 2;
         ctx.fillStyle = "rgba(248, 113, 113, 0.9)";
         if (sides.left) {
           const edgeX = tower.x - 16;
@@ -3956,21 +3978,7 @@ function drawTowers() {
         }
       }
     } else if (data.isMine) {
-      ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
-      ctx.beginPath();
-      ctx.arc(tower.x, tower.y, 12, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.75)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(tower.x, tower.y, 10, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(34, 197, 94, 0.8)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(tower.x - 6, tower.y);
-      ctx.lineTo(tower.x + 6, tower.y);
-      ctx.stroke();
+      continue;
     } else {
       if (tower.type === "watch") {
         ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
@@ -4708,8 +4716,9 @@ function draw() {
   ctx.save();
   ctx.translate(shake.x, shake.y);
   drawBackground();
-  drawTowers();
   drawTraps();
+  drawMines();
+  drawTowers();
   drawEnemies();
   drawProjectiles();
   drawExplosions();
