@@ -33,6 +33,7 @@ const ui = {
   buildDart: document.getElementById("build-dart"),
   buildTrap: document.getElementById("build-trap"),
   buildMine: document.getElementById("build-mine"),
+  buildFloorSpike: document.getElementById("build-floor-spike"),
   buildWall: document.getElementById("build-wall"),
   buildOp: document.getElementById("build-op"),
   nukeButton: document.getElementById("nuke-button"),
@@ -104,6 +105,7 @@ const buildButtons = {
   dart: ui.buildDart,
   trap: ui.buildTrap,
   mine: ui.buildMine,
+  floorSpike: ui.buildFloorSpike,
   wall: ui.buildWall,
   op: ui.buildOp,
 };
@@ -320,16 +322,28 @@ const towerTypes = {
     slow: 0,
   },
   mine: {
-    cost: 30,
+    cost: 15,
     range: 0,
     rate: 0,
-    damage: 28,
+    damage: 14,
     color: "#a3e635",
     slow: 0,
     allowOnPath: true,
     isMine: true,
-    triggerRadius: 16,
-    splashRadius: 46,
+    triggerRadius: 14,
+    splashRadius: 40,
+    noGridlock: true,
+  },
+  floorSpike: {
+    cost: 10,
+    range: 0,
+    rate: 0,
+    damage: 6,
+    color: "#f97316",
+    slow: 0,
+    allowOnPath: true,
+    isFloorSpike: true,
+    noGridlock: true,
   },
   wall: {
     cost: 10,
@@ -491,12 +505,29 @@ function recomputeGlobalPath(extraBlockedCell) {
   if (!pathPoints) return false;
   state.pathPoints = pathPoints;
   updateEnemyPaths();
+  cleanupOffPathFloorSpikes();
   return true;
 }
 
 function isOnPath(x, y) {
   const points = state.pathPoints.length > 0 ? state.pathPoints : path;
   return isPointNearPath(points, x, y, 18);
+}
+
+function cleanupOffPathFloorSpikes() {
+  const remaining = [];
+  for (const tower of state.towers) {
+    if (tower.type !== "floorSpike") {
+      remaining.push(tower);
+      continue;
+    }
+    if (isOnPath(tower.x, tower.y)) {
+      remaining.push(tower);
+      continue;
+    }
+    awardGold(tower.paidCost ?? towerTypes.floorSpike.cost);
+  }
+  state.towers = remaining;
 }
 
 function updateHud() {
@@ -864,11 +895,13 @@ function placeTower(type, x, y) {
   if (type === "op" && state.opPlaced) return;
   const hasWall = state.towers.some((tower) => tower.type === "wall" && !tower.spiky && tower.x === x && tower.y === y);
   if (isOnPath(x, y) && !data.allowOnPath && !hasWall) return;
-  if (type === "mine" && !isOnPath(x, y)) return;
-  if (type !== "wall" && type !== "op" && type !== "mine") {
+  if ((type === "mine" || type === "floorSpike") && !isOnPath(x, y)) return;
+  if (type !== "wall" && type !== "op" && type !== "mine" && type !== "floorSpike") {
     if (!hasWall) return;
   }
   for (const tower of state.towers) {
+    const towerData = towerTypes[tower.type];
+    if (towerData && towerData.noGridlock) continue;
     const towerX = tower.type === "drone" && Number.isFinite(tower.baseX) ? tower.baseX : tower.x;
     const towerY = tower.type === "drone" && Number.isFinite(tower.baseY) ? tower.baseY : tower.y;
     const overlap = Math.hypot(towerX - x, towerY - y) < 30;
@@ -1361,25 +1394,25 @@ function getTowerStats(tower) {
       const path = tower.upgradePath || 1;
       if (path === 1) {
         if (tier >= 1) {
-          rate *= 0.8;
+          rate *= 0.75;
         }
         if (tier >= 2) {
-          rate *= 0.75;
+          rate *= 0.6;
         }
         if (tier >= 3) {
           projectileSpeed = (projectileSpeed || data.projectileSpeed || 300) * 1.6;
           data.splashRadius += 12;
-          rate *= 0.8;
+          rate *= 0.55;
         }
         if (tier >= 4) {
           bombBurstCount = 6;
-          rate *= 0.65;
+          rate *= 0.4;
         }
         if (tier >= 5) {
           bombBurstCount = 12;
           damage *= 1.35;
           data.splashRadius += 18;
-          rate *= 0.6;
+          rate *= 0.3;
         }
       } else {
         if (tier >= 1) {
@@ -1578,6 +1611,8 @@ function getTowerDescription(type) {
       return "Spawns traps that decay over time.";
     case "mine":
       return "Explodes when enemies walk over it.";
+    case "floorSpike":
+      return "Floor spikes that damage enemies passing over them.";
     case "wall":
       return "Blocks the path. Place towers on it.";
     case "op":
@@ -1695,7 +1730,7 @@ function updateUpgradePanel() {
     if (ui.droneUpgradeActions) ui.droneUpgradeActions.classList.add("hidden");
     return;
   }
-  if (tower.type === "mine") {
+  if (tower.type === "mine" || tower.type === "floorSpike") {
     ui.upgradeDetails.textContent = getTowerDescription(tower.type);
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
@@ -2226,7 +2261,7 @@ function fireProjectile(tower, enemy, stats) {
       const missileSplash = stats.droneMissileSplash || 30;
       for (let i = 0; i < stats.droneMissiles; i += 1) {
         state.projectiles.push({
-          kind: "bomb",
+          kind: "missile",
           x: tower.x,
           y: tower.y,
           target: enemy,
@@ -2342,7 +2377,7 @@ function fireLaser(tower, enemy, stats, range) {
             }
             applyDamage(splash, damage * 0.5);
             if (splash.hp <= 0) {
-              awardGold(15);
+              handleEnemyDeath(splash);
             }
           }
         }
@@ -2355,7 +2390,7 @@ function fireLaser(tower, enemy, stats, range) {
         });
       }
       if (target.hp <= 0) {
-        awardGold(15);
+        handleEnemyDeath(target);
       }
     }
   }
@@ -2486,7 +2521,7 @@ function updateProjectiles(dt) {
           if (!state.nukeSmoke && proj.damage > 0) {
             applyDamage(enemy, proj.damage * dt);
             if (enemy.hp <= 0) {
-              awardGold(15);
+              handleEnemyDeath(enemy);
               continue;
             }
           }
@@ -2527,7 +2562,8 @@ function updateProjectiles(dt) {
       return proj.ttl > 0;
     }
 
-    if (proj.kind === "bomb") {
+    if (proj.kind === "bomb" || proj.kind === "missile") {
+      const isMissile = proj.kind === "missile";
       const targetPos = proj.target && proj.target.hp > 0 ? getEnemyPosition(proj.target) : proj.targetPos;
       if (!targetPos) return false;
       if (proj.target && proj.target.hp > 0) {
@@ -2535,7 +2571,9 @@ function updateProjectiles(dt) {
       }
       const dx = targetPos.x - proj.x;
       const dy = targetPos.y - proj.y;
-      const dist = Math.hypot(dx, dy);
+      const dist = Math.hypot(dx, dy) || 1;
+      proj.vx = (dx / dist) * proj.speed;
+      proj.vy = (dy / dist) * proj.speed;
       const step = proj.speed * dt;
       if (dist <= step) {
         state.explosions.push({
@@ -2543,7 +2581,7 @@ function updateProjectiles(dt) {
           y: targetPos.y,
           radius: proj.splashRadius,
           ttl: 0.35,
-          color: "rgba(251, 113, 133, 0.6)",
+          color: isMissile ? "rgba(251, 146, 60, 0.6)" : "rgba(251, 113, 133, 0.6)",
         });
         for (const enemy of state.enemies) {
           if (enemy.hp <= 0) continue;
@@ -2555,15 +2593,15 @@ function updateProjectiles(dt) {
             }
             applyDamage(enemy, proj.damage);
             if (enemy.hp <= 0) {
-              awardGold(15);
+              handleEnemyDeath(enemy);
             }
           }
         }
         if (proj.clusterCount && proj.clusterCount > 0) {
           const spawnClusterBombs = (cx, cy, count, damage, radius, childCount, childDamage, childRadius) => {
+            const spread = proj.splashRadius * 0.85;
             for (let i = 0; i < count; i += 1) {
-              const angle = Math.random() * Math.PI * 2;
-              const spread = Math.random() * proj.splashRadius * 0.9;
+              const angle = (i / count) * Math.PI * 2;
               const ex = cx + Math.cos(angle) * spread;
               const ey = cy + Math.sin(angle) * spread;
               state.projectiles.push({
@@ -2644,7 +2682,7 @@ function updateProjectiles(dt) {
         proj.target.slowFactor = proj.slow;
       }
       if (proj.target.hp <= 0) {
-        awardGold(15);
+        handleEnemyDeath(proj.target);
       }
       return false;
     }
@@ -2685,7 +2723,7 @@ function updateTraps(dt) {
       if (splashDist <= trap.splashRadius) {
         applyDamage(splash, trap.damage);
         if (splash.hp <= 0) {
-          awardGold(15);
+          handleEnemyDeath(splash);
         }
       }
     }
@@ -2763,7 +2801,7 @@ function updateTraps(dt) {
             enemy.slowFactor = Math.max(enemy.slowFactor || 0, trap.slow);
           }
           if (enemy.hp <= 0) {
-            awardGold(15);
+            handleEnemyDeath(enemy);
           }
         }
         if (trap.usesLeft !== undefined) {
@@ -3097,7 +3135,7 @@ function updateTowers(dt) {
     if (!stats) continue;
     const data = stats.data;
     if (tower.disabled) continue;
-    if (data.isMine || data.blocksPath) continue;
+    if (data.isMine || data.isFloorSpike || data.blocksPath) continue;
     if (tower.type === "trap") {
       const trapStats = getTrapSetterStats(tower);
       tower.trapCooldown = Math.max(0, (tower.trapCooldown || 0) - dt);
@@ -3175,7 +3213,7 @@ function updateTowers(dt) {
             }
             applyDamage(enemy, stats.droneBombDamage);
             if (enemy.hp <= 0) {
-              awardGold(15);
+              handleEnemyDeath(enemy);
             }
           }
         }
@@ -3202,7 +3240,12 @@ function updateTowers(dt) {
 }
 
 function updateEnemies(dt) {
-  state.enemies = state.enemies.filter((enemy) => enemy.hp > 0);
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) {
+      handleEnemyDeath(enemy);
+    }
+  }
+  state.enemies = state.enemies.filter((enemy) => enemy.hp > 0 || !enemy.deadProcessed);
   for (const enemy of state.enemies) {
     let tookSpikeDamage = false;
     let spikeDamage = 0;
@@ -3250,7 +3293,24 @@ function updateEnemies(dt) {
         enemy.dotDps = Math.max(enemy.dotDps || 0, state.globalPoisonDps);
       }
       if (enemy.hp <= 0) {
-        awardGold(15);
+        handleEnemyDeath(enemy);
+        continue;
+      }
+    }
+    const floorSpikeDamage = towerTypes.floorSpike?.damage || 0;
+    if (floorSpikeDamage > 0) {
+      for (const spike of state.towers) {
+        if (spike.type !== "floorSpike") continue;
+        const dist = Math.hypot(enemy.x - spike.x, enemy.y - spike.y);
+        if (dist <= 12) {
+          applyDamage(enemy, floorSpikeDamage * dt);
+          if (enemy.hp <= 0) {
+            handleEnemyDeath(enemy);
+            break;
+          }
+        }
+      }
+      if (enemy.hp <= 0) {
         continue;
       }
     }
@@ -3281,7 +3341,7 @@ function updateEnemies(dt) {
       if (!state.nukeSmoke) {
         applyDamage(enemy, enemy.dotDps * tick);
         if (enemy.hp <= 0) {
-          awardGold(15);
+          handleEnemyDeath(enemy);
           continue;
         }
       }
@@ -3292,7 +3352,7 @@ function updateEnemies(dt) {
       if (!state.nukeSmoke) {
         applyDamage(enemy, enemy.burnDps * tick);
         if (enemy.hp <= 0) {
-          awardGold(15);
+          handleEnemyDeath(enemy);
           continue;
         }
       }
@@ -3319,6 +3379,7 @@ function updateEnemies(dt) {
       enemy.pathIndex = nextIndex;
       if (enemy.pathIndex >= pathPoints.length - 1) {
         state.lives -= 1;
+        enemy.escaped = true;
         enemy.hp = 0;
       }
     } else {
@@ -3355,12 +3416,11 @@ function updateMines() {
         });
         for (const target of state.enemies) {
           if (target.hp <= 0) continue;
-          if (target.armored) continue;
           const splashDist = Math.hypot(target.x - tower.x, target.y - tower.y);
           if (splashDist <= data.splashRadius) {
             applyDamage(target, data.damage);
             if (target.hp <= 0) {
-              awardGold(15);
+              handleEnemyDeath(target);
             }
           }
         }
@@ -3537,6 +3597,56 @@ function applyDamage(enemy, amount) {
   const applied = Math.max(0, Math.min(enemy.hp, scaled));
   state.totalDamage += applied;
   enemy.hp -= scaled;
+  if (enemy.hp <= 0) {
+    handleEnemyDeath(enemy);
+  }
+}
+
+function spawnSplitEnemy(parent, tier) {
+  const maxHp = Math.max(1, parent.maxHp * 0.6);
+  const child = {
+    x: parent.x + (Math.random() - 0.5) * 10,
+    y: parent.y + (Math.random() - 0.5) * 10,
+    hp: maxHp,
+    maxHp,
+    speed: parent.speed * 1.05,
+    path: parent.path,
+    pathIndex: parent.pathIndex,
+    slowTimer: 0,
+    type: parent.type,
+    armored: parent.armored || false,
+    darkMatter: parent.darkMatter || false,
+    dotTimer: 0,
+    dotDps: 0,
+    burnTimer: 0,
+    burnDps: 0,
+    embrittleTimer: 0,
+    embrittleMultiplier: 1,
+    tier,
+    facing: parent.facing || 0,
+    stealth: parent.stealth,
+    revealed: parent.revealed,
+    radioactive: parent.radioactive,
+    revealTimer: 0,
+    nukeImmune: parent.nukeImmune,
+  };
+  if (child.armored) {
+    child.armorHits = 0;
+    child.armorBreakThreshold = 2 + Math.floor(Math.random() * 2);
+  }
+  state.enemies.push(child);
+}
+
+function handleEnemyDeath(enemy) {
+  if (enemy.deadProcessed) return;
+  enemy.deadProcessed = true;
+  if (enemy.escaped) return;
+  if (enemy.tier > 1 && enemy.type !== "boss") {
+    const nextTier = enemy.tier - 1;
+    spawnSplitEnemy(enemy, nextTier);
+    spawnSplitEnemy(enemy, nextTier);
+  }
+  awardGold(15);
 }
 
 function spawnArmorShatter(x, y, count = 12) {
@@ -3865,37 +3975,75 @@ function drawGrid() {
   }
 }
 
-function drawMines() {
-  for (const tower of state.towers) {
-    const data = towerTypes[tower.type];
-    if (!data || !data.isMine) continue;
-    ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+function shadeColor(hex, factor) {
+  const value = hex.replace("#", "");
+  const num = Number.parseInt(value.length === 3 ? value.split("").map((c) => c + c).join("") : value, 16);
+  const r = Math.max(0, Math.min(255, Math.round(((num >> 16) & 255) * factor)));
+  const g = Math.max(0, Math.min(255, Math.round(((num >> 8) & 255) * factor)));
+  const b = Math.max(0, Math.min(255, Math.round((num & 255) * factor)));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function drawUpgradePips(tower, color) {
+  const level = Math.min(tower.level || 1, 5);
+  if (level <= 1) return;
+  const radius = 20;
+  for (let i = 0; i < level; i += 1) {
+    const angle = -Math.PI / 2 + (i * Math.PI * 2) / 5;
+    const x = tower.x + Math.cos(angle) * radius;
+    const y = tower.y + Math.sin(angle) * radius;
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(tower.x, tower.y, 12, 0, Math.PI * 2);
+    ctx.arc(x, y, 2.6, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(16, 185, 129, 0.75)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(tower.x, tower.y, 10, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(34, 197, 94, 0.8)";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(tower.x - 6, tower.y);
-    ctx.lineTo(tower.x + 6, tower.y);
-    ctx.stroke();
   }
 }
 
-function drawDroneBody(x, y, scale = 1) {
-  ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+function drawMines() {
+  for (const tower of state.towers) {
+    const data = towerTypes[tower.type];
+    if (!data || (!data.isMine && !data.isFloorSpike)) continue;
+    if (data.isMine) {
+      const base = data.color || "#a3e635";
+      const stroke = shadeColor(base, 0.55);
+      ctx.fillStyle = base;
+      ctx.beginPath();
+      ctx.arc(tower.x, tower.y, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(tower.x, tower.y, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(tower.x - 6, tower.y);
+      ctx.lineTo(tower.x + 6, tower.y);
+      ctx.stroke();
+      continue;
+    }
+    ctx.fillStyle = data.color || "#f97316";
+    ctx.beginPath();
+    ctx.moveTo(tower.x - 8, tower.y + 6);
+    ctx.lineTo(tower.x + 8, tower.y + 6);
+    ctx.lineTo(tower.x, tower.y - 8);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawDroneBody(x, y, scale = 1, color = "#34d399") {
+  const stroke = shadeColor(color, 0.55);
+  const core = shadeColor(color, 1.05);
+  ctx.fillStyle = color;
   ctx.beginPath();
   ctx.arc(x, y, 10 * scale, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = "rgba(34, 211, 238, 0.7)";
+  ctx.strokeStyle = stroke;
   ctx.lineWidth = 2;
   ctx.stroke();
-  ctx.strokeStyle = "rgba(34, 211, 238, 0.8)";
+  ctx.strokeStyle = stroke;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(x - 18 * scale, y);
@@ -3907,7 +4055,7 @@ function drawDroneBody(x, y, scale = 1) {
   ctx.moveTo(x, y + 18 * scale);
   ctx.lineTo(x, y + 8 * scale);
   ctx.stroke();
-  ctx.fillStyle = "rgba(56, 189, 248, 0.75)";
+  ctx.fillStyle = core;
   ctx.beginPath();
   ctx.arc(x, y, 3 * scale, 0, Math.PI * 2);
   ctx.fill();
@@ -3977,60 +4125,54 @@ function drawTowers() {
           ctx.fill();
         }
       }
-    } else if (data.isMine) {
+    } else if (data.isMine || data.isFloorSpike) {
       continue;
     } else {
       if (tower.type === "watch") {
-        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+        const base = data.color || "#f59e0b";
+        const stroke = shadeColor(base, 0.55);
+        ctx.fillStyle = base;
         ctx.beginPath();
-        ctx.moveTo(tower.x - 14, tower.y + 12);
+        ctx.moveTo(tower.x, tower.y - 14);
         ctx.lineTo(tower.x + 14, tower.y + 12);
-        ctx.lineTo(tower.x + 10, tower.y - 16);
-        ctx.lineTo(tower.x - 10, tower.y - 16);
+        ctx.lineTo(tower.x - 14, tower.y + 12);
         ctx.closePath();
         ctx.fill();
-        ctx.strokeStyle = "rgba(34, 211, 238, 0.8)";
+        ctx.strokeStyle = stroke;
         ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.fillStyle = "rgba(56, 189, 248, 0.85)";
-        ctx.fillRect(tower.x - 5, tower.y - 14, 10, 8);
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.6)";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(tower.x - 12, tower.y + 2, 24, 8);
       } else if (tower.type === "freeze") {
-        const grad = ctx.createRadialGradient(tower.x - 6, tower.y - 6, 4, tower.x, tower.y, 16);
-        grad.addColorStop(0, "rgba(226, 232, 240, 0.9)");
-        grad.addColorStop(0.45, "rgba(56, 189, 248, 0.5)");
-        grad.addColorStop(1, "rgba(12, 18, 35, 0.95)");
-        ctx.fillStyle = grad;
+        const base = data.color || "#7dd3fc";
+        const stroke = shadeColor(base, 0.55);
+        ctx.fillStyle = base;
         ctx.beginPath();
         ctx.arc(tower.x, tower.y, 14, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = "rgba(34, 211, 238, 0.85)";
+        ctx.strokeStyle = stroke;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(tower.x, tower.y, 12, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.strokeStyle = "rgba(34, 211, 238, 0.55)";
-        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(tower.x - 10, tower.y);
-        ctx.lineTo(tower.x + 10, tower.y);
-        ctx.moveTo(tower.x, tower.y - 10);
-        ctx.lineTo(tower.x, tower.y + 10);
+        ctx.moveTo(tower.x - 8, tower.y);
+        ctx.lineTo(tower.x + 8, tower.y);
+        ctx.moveTo(tower.x, tower.y - 8);
+        ctx.lineTo(tower.x, tower.y + 8);
         ctx.stroke();
       } else if (tower.type === "drone") {
+        const base = data.color || "#34d399";
+        const stroke = shadeColor(base, 0.55);
         if (Number.isFinite(tower.baseX) && Number.isFinite(tower.baseY)) {
-          ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+          ctx.fillStyle = stroke;
           ctx.beginPath();
           ctx.arc(tower.baseX, tower.baseY, 12, 0, Math.PI * 2);
           ctx.fill();
-          ctx.strokeStyle = "rgba(34, 211, 238, 0.85)";
+          ctx.strokeStyle = shadeColor(base, 0.4);
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.arc(tower.baseX, tower.baseY, 10, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.strokeStyle = "rgba(56, 189, 248, 0.7)";
+          ctx.strokeStyle = shadeColor(base, 0.7);
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.moveTo(tower.baseX - 6, tower.baseY);
@@ -4038,81 +4180,63 @@ function drawTowers() {
           ctx.stroke();
         }
         const miniScale = tower.isMini ? 0.65 : 1;
-        drawDroneBody(tower.x, tower.y, miniScale);
+        drawDroneBody(tower.x, tower.y, miniScale, base);
         if (!tower.isMini) {
-          const level = tower.level || 1;
-          const miniCount = tower.upgradePath === 2 && level >= 3 ? (level >= 4 ? 2 : 1) : 0;
+          const stats = getTowerStats(tower);
+          const miniCount = stats ? stats.droneMiniCount || 0 : 0;
           const offsets = getMiniDroneOffsets(tower, miniCount);
           for (const offset of offsets) {
-            drawDroneBody(tower.x + offset.x, tower.y + offset.y, 0.55);
+            drawDroneBody(tower.x + offset.x, tower.y + offset.y, 0.55, base);
           }
         }
       } else if (tower.type === "bomb") {
-        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+        const base = data.color || "#fb7185";
+        const stroke = shadeColor(base, 0.55);
+        ctx.fillStyle = base;
         ctx.beginPath();
         ctx.arc(tower.x, tower.y, 14, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = "rgba(248, 113, 113, 0.8)";
+        ctx.strokeStyle = stroke;
         ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.fillStyle = "rgba(248, 113, 113, 0.8)";
-        ctx.beginPath();
-        ctx.arc(tower.x + 4, tower.y - 5, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(251, 146, 60, 0.8)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(tower.x - 8, tower.y + 2);
-        ctx.lineTo(tower.x + 8, tower.y + 2);
         ctx.stroke();
       } else if (tower.type === "laser") {
-        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+        const base = data.color || "#ef4444";
+        const stroke = shadeColor(base, 0.55);
+        ctx.fillStyle = base;
         ctx.fillRect(tower.x - 10, tower.y - 16, 20, 28);
-        ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
-        ctx.fillRect(tower.x - 4, tower.y - 22, 8, 10);
-        ctx.strokeStyle = "rgba(248, 113, 113, 0.8)";
+        ctx.strokeStyle = stroke;
         ctx.lineWidth = 2;
         ctx.strokeRect(tower.x - 10, tower.y - 16, 20, 28);
-        ctx.strokeStyle = "rgba(248, 113, 113, 0.7)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(tower.x - 8, tower.y + 6);
-        ctx.lineTo(tower.x + 8, tower.y + 6);
-        ctx.stroke();
       } else if (tower.type === "dart") {
-        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+        const base = data.color || "#a78bfa";
+        const stroke = shadeColor(base, 0.55);
+        ctx.fillStyle = base;
         ctx.beginPath();
-        ctx.arc(tower.x, tower.y, 13, 0, Math.PI * 2);
+        ctx.moveTo(tower.x, tower.y - 14);
+        ctx.lineTo(tower.x + 12, tower.y);
+        ctx.lineTo(tower.x, tower.y + 14);
+        ctx.lineTo(tower.x - 12, tower.y);
+        ctx.closePath();
         ctx.fill();
-        ctx.strokeStyle = "rgba(129, 140, 248, 0.85)";
+        ctx.strokeStyle = stroke;
         ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(129, 140, 248, 0.9)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(tower.x - 10, tower.y + 6);
-        ctx.lineTo(tower.x + 12, tower.y - 8);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(tower.x - 10, tower.y - 6);
-        ctx.lineTo(tower.x + 12, tower.y + 8);
         ctx.stroke();
       } else if (tower.type === "flame") {
-        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+        const base = data.color || "#f97316";
+        const stroke = shadeColor(base, 0.55);
+        ctx.fillStyle = base;
         ctx.beginPath();
         ctx.arc(tower.x, tower.y, 14, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = "rgba(249, 115, 22, 0.85)";
+        ctx.strokeStyle = stroke;
         ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.fillStyle = "rgba(251, 146, 60, 0.9)";
-        ctx.beginPath();
-        ctx.arc(tower.x + 4, tower.y - 6, 4, 0, Math.PI * 2);
-        ctx.fill();
       } else if (tower.type === "trap") {
-        ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
+        const base = data.color || "#f59e0b";
+        const stroke = shadeColor(base, 0.55);
+        ctx.fillStyle = base;
         ctx.fillRect(tower.x - 12, tower.y - 12, 24, 24);
-        ctx.strokeStyle = "rgba(250, 204, 21, 0.8)";
+        ctx.strokeStyle = stroke;
         ctx.lineWidth = 2;
         ctx.strokeRect(tower.x - 12, tower.y - 12, 24, 24);
       } else if (tower.type === "op") {
@@ -4144,6 +4268,11 @@ function drawTowers() {
         ctx.lineWidth = 2;
         ctx.stroke();
       }
+    }
+
+    if (!data.blocksPath && !data.isMine && !data.isFloorSpike && tower.type !== "wall" && tower.type !== "op") {
+      const base = data.color || "#e2e8f0";
+      drawUpgradePips(tower, shadeColor(base, 0.75));
     }
 
     if (tower.disabled) {
@@ -4199,16 +4328,8 @@ function drawEnemies() {
   if (state.nukeSmoke) {
     return;
   }
-  function randomBetween(min, max) {
-    return min + Math.random() * (max - min);
-  }
-
   function drawSphere(x, y, radius, baseColor) {
-    const gradient = ctx.createRadialGradient(x - radius * 0.4, y - radius * 0.4, radius * 0.2, x, y, radius);
-    gradient.addColorStop(0, "#f8fafc");
-    gradient.addColorStop(0.25, baseColor);
-    gradient.addColorStop(1, "#0b1020");
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = baseColor;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
@@ -4218,28 +4339,6 @@ function drawEnemies() {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(size, 0);
-    ctx.lineTo(-size * 0.8, size * 0.7);
-    ctx.lineTo(-size * 0.8, -size * 0.7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawTrianglePrism(x, y, size, angle, color) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    const offset = { x: 4, y: 4 };
-    ctx.fillStyle = "rgba(15, 23, 42, 0.65)";
-    ctx.beginPath();
-    ctx.moveTo(size + offset.x, offset.y);
-    ctx.lineTo(-size * 0.8 + offset.x, size * 0.7 + offset.y);
-    ctx.lineTo(-size * 0.8 + offset.x, -size * 0.7 + offset.y);
-    ctx.closePath();
-    ctx.fill();
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(size, 0);
@@ -4285,25 +4384,6 @@ function drawEnemies() {
     ctx.fill();
   }
 
-  function drawPentagonPrism(x, y, radius, color) {
-    const offsetX = 4;
-    const offsetY = 4;
-    ctx.fillStyle = "rgba(15, 23, 42, 0.65)";
-    ctx.beginPath();
-    for (let i = 0; i < 5; i += 1) {
-      const angle = -Math.PI / 2 + (i * Math.PI * 2) / 5;
-      const px = x + Math.cos(angle) * radius + offsetX;
-      const py = y + Math.sin(angle) * radius + offsetY;
-      if (i === 0) {
-        ctx.moveTo(px, py);
-      } else {
-        ctx.lineTo(px, py);
-      }
-    }
-    ctx.closePath();
-    ctx.fill();
-    drawPentagon(x, y, radius, color);
-  }
 
   function drawOctagon(x, y, radius, color) {
     ctx.fillStyle = color;
@@ -4322,25 +4402,6 @@ function drawEnemies() {
     ctx.fill();
   }
 
-  function drawOctagonPrism(x, y, radius, color) {
-    const offsetX = 3;
-    const offsetY = 3;
-    ctx.fillStyle = "rgba(15, 23, 42, 0.65)";
-    ctx.beginPath();
-    for (let i = 0; i < 8; i += 1) {
-      const angle = -Math.PI / 2 + (i * Math.PI * 2) / 8;
-      const px = x + Math.cos(angle) * radius + offsetX;
-      const py = y + Math.sin(angle) * radius + offsetY;
-      if (i === 0) {
-        ctx.moveTo(px, py);
-      } else {
-        ctx.lineTo(px, py);
-      }
-    }
-    ctx.closePath();
-    ctx.fill();
-    drawOctagon(x, y, radius, color);
-  }
 
   for (const enemy of state.enemies) {
     const pos = getEnemyPosition(enemy);
@@ -4369,15 +4430,24 @@ function drawEnemies() {
     } else if (enemy.burnTimer > 0) {
       baseColor = "#f97316";
     }
+    const tierShade = 1 - (enemy.tier - 1) * 0.15;
+    baseColor = shadeColor(baseColor, Math.max(0.55, tierShade));
 
     if (enemy.type === "speedy") {
-      drawTrianglePrism(pos.x, pos.y, radius, enemy.facing, baseColor);
+      drawTriangle(pos.x, pos.y, radius, enemy.facing, baseColor);
     } else if (enemy.type === "heavy") {
-      drawPentagonPrism(pos.x, pos.y, radius, baseColor);
+      drawPentagon(pos.x, pos.y, radius, baseColor);
     } else if (enemy.type === "labrat") {
-      drawOctagonPrism(pos.x, pos.y, radius, baseColor);
+      drawOctagon(pos.x, pos.y, radius, baseColor);
     } else {
       drawSphere(pos.x, pos.y, radius, baseColor);
+    }
+    if (enemy.tier > 1) {
+      ctx.strokeStyle = "rgba(15, 23, 42, 0.5)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 1, 0, Math.PI * 2);
+      ctx.stroke();
     }
 
     if (enemy.armored) {
@@ -4386,34 +4456,17 @@ function drawEnemies() {
 
     if (enemy.armored) {
       ctx.strokeStyle = "#e2e8f0";
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 2, 0, Math.PI * 2);
       ctx.stroke();
     }
     if (enemy.darkMatter) {
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+      ctx.strokeStyle = "rgba(99, 45, 151, 0.85)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 5, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(99, 45, 151, 0.85)";
-      ctx.lineWidth = 2;
-      const bolts = 4;
-      for (let i = 0; i < bolts; i += 1) {
-        const startAngle = Math.random() * Math.PI * 2;
-        const segments = 6;
-        ctx.beginPath();
-        for (let s = 0; s <= segments; s += 1) {
-          const angle = startAngle + s * 0.4 + randomBetween(-0.2, 0.2);
-          const r = radius + 5 + randomBetween(-2, 4);
-          const x = pos.x + Math.cos(angle) * r;
-          const y = pos.y + Math.sin(angle) * r;
-          if (s === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
     }
 
     if (enemy.radioactive) {
@@ -4422,71 +4475,22 @@ function drawEnemies() {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 4, 0, Math.PI * 2);
       ctx.stroke();
-      const sparks = 4;
-      for (let i = 0; i < sparks; i += 1) {
-        const angle = Math.random() * Math.PI * 2;
-        const r = randomBetween(2, radius + 4);
-        const x = pos.x + Math.cos(angle) * r;
-        const y = pos.y + Math.sin(angle) * r;
-        ctx.fillStyle = "rgba(134, 239, 172, 0.8)";
-        ctx.beginPath();
-        ctx.arc(x, y, randomBetween(1.2, 2.4), 0, Math.PI * 2);
-        ctx.fill();
-      }
     }
 
     if (enemy.burnTimer > 0) {
       ctx.strokeStyle = "rgba(249, 115, 22, 0.6)";
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 4, 0, Math.PI * 2);
       ctx.stroke();
-      const sparks = 5;
-      for (let i = 0; i < sparks; i += 1) {
-        const angle = Math.random() * Math.PI * 2;
-        const r = randomBetween(2, radius + 2);
-        const x = pos.x + Math.cos(angle) * r;
-        const y = pos.y + Math.sin(angle) * r;
-        const flameSize = randomBetween(2, 4);
-        const flameAngle = randomBetween(-0.6, 0.6);
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(flameAngle);
-        ctx.fillStyle = "rgba(249, 115, 22, 0.85)";
-        ctx.beginPath();
-        ctx.moveTo(0, -flameSize);
-        ctx.lineTo(flameSize * 0.7, flameSize * 0.7);
-        ctx.lineTo(-flameSize * 0.7, flameSize * 0.7);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = "rgba(251, 191, 36, 0.75)";
-        ctx.beginPath();
-        ctx.moveTo(0, -flameSize * 0.6);
-        ctx.lineTo(flameSize * 0.4, flameSize * 0.6);
-        ctx.lineTo(-flameSize * 0.4, flameSize * 0.6);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
     }
 
     if (enemy.dotTimer > 0) {
-      const skulls = 3;
-      for (let i = 0; i < skulls; i += 1) {
-        const angle = Math.random() * Math.PI * 2;
-        const r = randomBetween(2, radius + 2);
-        const x = pos.x + Math.cos(angle) * r;
-        const y = pos.y + Math.sin(angle) * r;
-        ctx.fillStyle = "rgba(168, 85, 247, 0.9)";
-        ctx.beginPath();
-        ctx.arc(x, y, randomBetween(1.6, 3.2), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "rgba(15, 23, 42, 0.7)";
-        ctx.beginPath();
-        ctx.arc(x - 0.9, y - 0.5, 0.6, 0, Math.PI * 2);
-        ctx.arc(x + 0.9, y - 0.5, 0.6, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.strokeStyle = "rgba(168, 85, 247, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 3, 0, Math.PI * 2);
+      ctx.stroke();
     }
 
     const hpRatio = Math.max(0, enemy.hp / enemy.maxHp);
@@ -4522,6 +4526,23 @@ function drawProjectiles() {
       ctx.beginPath();
       ctx.arc(proj.x, proj.y, 6, 0, Math.PI * 2);
       ctx.fill();
+      continue;
+    }
+    if (proj.kind === "missile") {
+      const vx = proj.vx || 1;
+      const vy = proj.vy || 0;
+      const angle = Math.atan2(vy, vx);
+      ctx.save();
+      ctx.translate(proj.x, proj.y);
+      ctx.rotate(angle);
+      ctx.fillStyle = "#fb923c";
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(-6, 4);
+      ctx.lineTo(-6, -4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
       continue;
     }
     if (proj.kind === "line") {
@@ -4671,9 +4692,9 @@ function drawPlacementPreview() {
   if (!data) return;
   const hasWall = state.towers.some((tower) => tower.type === "wall" && !tower.spiky && tower.x === snapped.x && tower.y === snapped.y);
   const invalidPath = isOnPath(snapped.x, snapped.y) && !data.allowOnPath && !hasWall;
-  const requiresWall = state.placing !== "wall" && state.placing !== "drone" && state.placing !== "op" && state.placing !== "mine";
+  const requiresWall = state.placing !== "wall" && state.placing !== "drone" && state.placing !== "op" && state.placing !== "mine" && state.placing !== "floorSpike";
   const invalidWall = requiresWall && !hasWall;
-  const invalidMine = state.placing === "mine" && !isOnPath(snapped.x, snapped.y);
+  const invalidMine = (state.placing === "mine" || state.placing === "floorSpike") && !isOnPath(snapped.x, snapped.y);
   const invalid = invalidPath || invalidWall || invalidMine;
   ctx.strokeStyle = invalid ? "rgba(239, 68, 68, 0.8)" : "rgba(34, 197, 94, 0.8)";
   ctx.lineWidth = 2;
@@ -4912,6 +4933,17 @@ ui.buildMine.addEventListener("click", () => {
   state.placing = "mine";
 });
 
+if (ui.buildFloorSpike) {
+  ui.buildFloorSpike.addEventListener("click", () => {
+    const cost = towerTypes.floorSpike.cost;
+    if (!canAfford(cost)) {
+      flashButton(buildButtons.floorSpike);
+      return;
+    }
+    state.placing = "floorSpike";
+  });
+}
+
 ui.buildWall.addEventListener("click", () => {
   const cost = state.wallsPlaced === 0 ? 0 : towerTypes.wall.cost;
   if (!canAfford(cost)) {
@@ -4974,7 +5006,7 @@ if (ui.upgradePanel) {
     event.stopPropagation();
     const tower = state.selectedTower;
     if (!tower) return;
-    if (tower.type === "wall" || tower.type === "mine") return;
+    if (tower.type === "wall" || tower.type === "mine" || tower.type === "floorSpike") return;
     if (tower.type === "bomb" && (tower.level || 1) >= state.towerLevelCap) return;
     const current = tower.level || 1;
     const targetRaw = Number.parseInt(ui.upgradeTarget?.value || "1", 10);
