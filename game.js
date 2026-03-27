@@ -2062,7 +2062,7 @@ function handleClick(event) {
     const wall = towersHere.find((tower) => tower.type === "wall");
     const nonWall = towersHere.find((tower) => tower.type !== "wall");
     if (wall && nonWall) {
-      selected = state.selectedTower === wall ? nonWall : wall;
+      selected = nonWall;
     } else {
       selected = nonWall || wall;
     }
