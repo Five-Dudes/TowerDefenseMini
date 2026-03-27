@@ -5557,16 +5557,17 @@ if (ui.openTips) {
   });
 }
 
+const openTutorialModal = (event) => {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  ui.tutorialModal?.classList.remove("hidden");
+};
+
 if (ui.openTutorial) {
-  const openTutorialHandler = (event) => {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    ui.tutorialModal?.classList.remove("hidden");
-  };
-  ui.openTutorial.addEventListener("click", openTutorialHandler);
-  ui.openTutorial.addEventListener("pointerdown", openTutorialHandler);
+  ui.openTutorial.addEventListener("click", openTutorialModal);
+  ui.openTutorial.addEventListener("pointerdown", openTutorialModal);
 }
 
 if (ui.closeTips) {
@@ -5659,22 +5660,22 @@ if (ui.jasperModal) {
   }
 
 const titleScreen = document.getElementById("title-screen");
+const selectDifficulty = (difficulty) => {
+  if (difficulty === "easy") {
+    state.difficultyMultipliers = { enemyHp: 0.85, enemySpeed: 0.9, gold: 1.2 };
+  } else if (difficulty === "hard") {
+    state.difficultyMultipliers = { enemyHp: 1.25, enemySpeed: 1.1, gold: 0.9 };
+  } else {
+    state.difficultyMultipliers = { enemyHp: 1, enemySpeed: 1, gold: 1 };
+  }
+  state.difficulty = difficulty;
+  state.gameStarted = true;
+  titleScreen?.classList.add("hidden");
+  if (ui.gameOver) ui.gameOver.classList.add("hidden");
+  updateHud();
+};
 if (titleScreen) {
   const buttons = titleScreen.querySelectorAll("[data-difficulty]");
-  const selectDifficulty = (difficulty) => {
-    if (difficulty === "easy") {
-      state.difficultyMultipliers = { enemyHp: 0.85, enemySpeed: 0.9, gold: 1.2 };
-    } else if (difficulty === "hard") {
-      state.difficultyMultipliers = { enemyHp: 1.25, enemySpeed: 1.1, gold: 0.9 };
-    } else {
-      state.difficultyMultipliers = { enemyHp: 1, enemySpeed: 1, gold: 1 };
-    }
-    state.difficulty = difficulty;
-    state.gameStarted = true;
-    titleScreen.classList.add("hidden");
-    if (ui.gameOver) ui.gameOver.classList.add("hidden");
-    updateHud();
-  };
   buttons.forEach((button) => {
     const handler = (event) => {
       event.preventDefault();
@@ -5687,6 +5688,26 @@ if (titleScreen) {
     button.addEventListener("pointerdown", handler);
   });
 }
+
+document.addEventListener("pointerup", (event) => {
+  if (!titleScreen || titleScreen.classList.contains("hidden")) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const difficultyButton = target.closest("[data-difficulty]");
+  if (difficultyButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const difficulty = difficultyButton.dataset.difficulty;
+    if (difficulty) {
+      selectDifficulty(difficulty);
+    }
+    return;
+  }
+  const tutorialButton = target.closest("#open-tutorial");
+  if (tutorialButton) {
+    openTutorialModal(event);
+  }
+}, true);
 
 if (ui.encyclopediaModal) {
   ui.encyclopediaModal.classList.add("hidden");
