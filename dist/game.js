@@ -222,6 +222,15 @@ function isWallAdjacentToPath(x, y) {
   return offsets.some((offset) => isOnPath(x + offset.x, y + offset.y));
 }
 
+function getWallPathSides(x, y) {
+  return {
+    right: isOnPath(x + grid.size, y),
+    left: isOnPath(x - grid.size, y),
+    down: isOnPath(x, y + grid.size),
+    up: isOnPath(x, y - grid.size),
+  };
+}
+
 const towerTypes = {
   watch: {
     cost: 40,
@@ -1623,6 +1632,7 @@ function updateUpgradePanel() {
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
     if (ui.bombUpgradeActions) ui.bombUpgradeActions.classList.add("hidden");
+    if (ui.dartUpgradeActions) ui.dartUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
@@ -1976,7 +1986,13 @@ function handleClick(event) {
     }
   }
   if (towersHere.length > 0) {
-    selected = towersHere.find((tower) => tower.type !== "wall") || towersHere[0];
+    const wall = towersHere.find((tower) => tower.type === "wall");
+    const nonWall = towersHere.find((tower) => tower.type !== "wall");
+    if (wall && nonWall && state.selectedTower === nonWall) {
+      selected = wall;
+    } else {
+      selected = nonWall || wall;
+    }
   }
   state.selectedTower = selected;
   state.selectedTrap = null;
@@ -1986,6 +2002,9 @@ function handleClick(event) {
   }
   if (state.placing) {
     placeTower(state.placing, snapped.x, snapped.y);
+    state.selectedTower = null;
+    state.selectedTrap = null;
+    state.placing = null;
   }
 }
 
@@ -3720,31 +3739,50 @@ function drawTowers() {
       ctx.lineTo(tower.x + 12, tower.y);
       ctx.stroke();
       if (tower.spiky) {
+        const sides = getWallPathSides(tower.x, tower.y);
+        const spikeLen = grid.size - 12;
+        const spikeHalf = 8;
         ctx.fillStyle = "rgba(248, 113, 113, 0.9)";
-        ctx.beginPath();
-        ctx.moveTo(tower.x - 16, tower.y - 12);
-        ctx.lineTo(tower.x - 24, tower.y);
-        ctx.lineTo(tower.x - 16, tower.y + 12);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(tower.x + 16, tower.y - 12);
-        ctx.lineTo(tower.x + 24, tower.y);
-        ctx.lineTo(tower.x + 16, tower.y + 12);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(tower.x - 12, tower.y - 16);
-        ctx.lineTo(tower.x, tower.y - 24);
-        ctx.lineTo(tower.x + 12, tower.y - 16);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(tower.x - 12, tower.y + 16);
-        ctx.lineTo(tower.x, tower.y + 24);
-        ctx.lineTo(tower.x + 12, tower.y + 16);
-        ctx.closePath();
-        ctx.fill();
+        if (sides.left) {
+          const edgeX = tower.x - 16;
+          const tipX = edgeX - spikeLen;
+          ctx.beginPath();
+          ctx.moveTo(edgeX, tower.y - spikeHalf);
+          ctx.lineTo(edgeX, tower.y + spikeHalf);
+          ctx.lineTo(tipX, tower.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+        if (sides.right) {
+          const edgeX = tower.x + 16;
+          const tipX = edgeX + spikeLen;
+          ctx.beginPath();
+          ctx.moveTo(edgeX, tower.y - spikeHalf);
+          ctx.lineTo(edgeX, tower.y + spikeHalf);
+          ctx.lineTo(tipX, tower.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+        if (sides.up) {
+          const edgeY = tower.y - 16;
+          const tipY = edgeY - spikeLen;
+          ctx.beginPath();
+          ctx.moveTo(tower.x - spikeHalf, edgeY);
+          ctx.lineTo(tower.x + spikeHalf, edgeY);
+          ctx.lineTo(tower.x, tipY);
+          ctx.closePath();
+          ctx.fill();
+        }
+        if (sides.down) {
+          const edgeY = tower.y + 16;
+          const tipY = edgeY + spikeLen;
+          ctx.beginPath();
+          ctx.moveTo(tower.x - spikeHalf, edgeY);
+          ctx.lineTo(tower.x + spikeHalf, edgeY);
+          ctx.lineTo(tower.x, tipY);
+          ctx.closePath();
+          ctx.fill();
+        }
       }
     } else if (data.isMine) {
       ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
