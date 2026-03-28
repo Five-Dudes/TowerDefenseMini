@@ -30,6 +30,10 @@ const ui = {
   tipsModal: document.getElementById("tips-modal"),
   openTips: document.getElementById("open-tips"),
   closeTips: document.getElementById("close-tips"),
+  alertModal: document.getElementById("alert-modal"),
+  alertTitle: document.getElementById("alert-title"),
+  alertContent: document.getElementById("alert-content"),
+  closeAlert: document.getElementById("close-alert"),
   tutorialModal: document.getElementById("tutorial-modal"),
   openTutorial: document.getElementById("open-tutorial"),
   closeTutorial: document.getElementById("close-tutorial"),
@@ -100,6 +104,7 @@ const ui = {
   applyWave: document.getElementById("apply-wave"),
   waveSpeed: document.getElementById("wave-speed"),
   autoWave: document.getElementById("auto-wave"),
+  halfCash: document.getElementById("half-cash"),
   spawnEnemy: document.getElementById("spawn-enemy"),
   spawnEnemyType: document.getElementById("spawn-enemy-type"),
   spawnEnemyCount: document.getElementById("spawn-enemy-count"),
@@ -215,6 +220,7 @@ const state = {
   nukeSmoke: null,
   sixSevenActive: false,
   sixSevenTimer: null,
+  halfCash: false,
 };
 
 const maps = [
@@ -354,6 +360,7 @@ const towerTypes = {
     damage: 9,
     color: "#f59e0b",
     slow: 0,
+    blocksPath: true,
   },
   freeze: {
     cost: 80,
@@ -368,6 +375,7 @@ const towerTypes = {
     gasRadius: 12,
     gasMaxRadius: 70,
     gasGrowRate: 55,
+    blocksPath: true,
   },
   drone: {
     cost: 95,
@@ -378,6 +386,7 @@ const towerTypes = {
     slow: 0,
     moveSpeed: 1.6,
     moveRadius: 22,
+    blocksPath: true,
   },
   bomb: {
     cost: 100,
@@ -388,6 +397,7 @@ const towerTypes = {
     slow: 0,
     splashRadius: 36,
     projectileSpeed: 300,
+    blocksPath: true,
   },
   laser: {
     cost: 160,
@@ -401,6 +411,7 @@ const towerTypes = {
     fireUnlockLevel: 1,
     fireDps: 9,
     fireDuration: 2.4,
+    blocksPath: true,
   },
   dart: {
     cost: 85,
@@ -412,6 +423,7 @@ const towerTypes = {
     poisonDps: 10,
     poisonDuration: 4,
     projectileSpeed: 380,
+    blocksPath: true,
   },
   flame: {
     cost: 105,
@@ -423,6 +435,7 @@ const towerTypes = {
     coneAngle: 0.7,
     burnDps: 12,
     burnDuration: 2.4,
+    blocksPath: true,
   },
   trap: {
     cost: 110,
@@ -431,19 +444,28 @@ const towerTypes = {
     damage: 0,
     color: "#f59e0b",
     slow: 0,
+    blocksPath: true,
   },
   spikeTower: {
     cost: 85,
     range: 0,
     rate: 0,
-    damage: 20,
+    damage: 26,
     color: "#f472b6",
     slow: 0,
-    spikeRange: 48,
-    spikeExtendSpeed: 6,
-    spikeRetractSpeed: 1.4,
-    spikeHold: 0.6,
+    spikeRange: 60,
+    spikeExtendSpeed: 8,
+    spikeRetractSpeed: 2.4,
+    spikeHold: 0.8,
     allowOnPath: false,
+    spikeDamage: 10,
+    spikeSlow: 0.14,
+    spikeCount: 4,
+    drillDamage: 12,
+    drillCharge: 1.5,
+    drillDuration: 2.4,
+    drillSlow: 0.26,
+    blocksPath: true,
   },
   mine: {
     cost: 20,
@@ -493,6 +515,7 @@ const towerTypes = {
     laser: true,
     beamWidth: 14,
     splashRadius: 60,
+    blocksPath: true,
   },
 };
 
@@ -700,7 +723,7 @@ function cleanupOffPathFloorSpikes() {
 function updateHud() {
   const availableNukes = state.nukeCharges;
   ui.lives.textContent = state.lives;
-  ui.gold.textContent = state.infiniteGold ? "∞" : state.gold;
+  ui.gold.textContent = state.infiniteGold ? "∞" : Math.round(state.gold);
   ui.wave.textContent = state.wave;
   if (ui.damage) {
     ui.damage.textContent = Math.round(state.totalDamage || 0);
@@ -714,6 +737,9 @@ function updateHud() {
   if (ui.nukeCount) {
     ui.nukeCount.textContent = `Nukes: ${availableNukes}`;
   }
+  if (ui.halfCash) {
+    ui.halfCash.textContent = `Half Cash: ${state.halfCash ? "On" : "Off"}`;
+  }
 }
 
 function awardGold(amount) {
@@ -722,7 +748,9 @@ function awardGold(amount) {
     return;
   }
   const multiplier = state.difficultyMultipliers.gold || 1;
-  state.gold += Math.max(0, Math.round(amount * multiplier));
+  const cashMultiplier = state.halfCash ? 0.5 : 1;
+  state.gold += Math.max(0, Math.round(amount * multiplier * cashMultiplier));
+  state.gold = Math.round(state.gold);
 }
 
 function canAfford(cost) {
@@ -731,7 +759,7 @@ function canAfford(cost) {
 
 function payCost(cost) {
   if (state.infiniteGold) return;
-  state.gold -= cost;
+  state.gold = Math.max(0, Math.round(state.gold - cost));
 }
 
 function flashButton(element) {
@@ -769,7 +797,7 @@ function sellTower(tower) {
     tower.spawnedMinis = [];
   }
   state.towers = state.towers.filter((entry) => entry !== tower);
-  if (tower.type === "wall") {
+  if (data && data.blocksPath) {
     recomputeGlobalPath();
   }
   if (tower.type === "op") {
@@ -868,7 +896,7 @@ function updateEncyclopedia() {
     }
   }
   if (state.infiniteGold) {
-    lines.push("<div><strong>Tower Stats</strong><div>Watch: 45c, 100r, 0.95s, 9 dmg</div><div>Freeze: 80c, 120r, 1.3s, gas slow</div><div>Drone: 95c, 120r, 0.75s, 10 dmg</div><div>Bomb: 100c, 120r, 1.5s, 18 dmg, 36 splash</div><div>Laser: 160c, 190r, 1.35s, 18 dmg, pierce, burn upgrade</div><div>Dart: 85c, 140r, 0.8s, 6 dmg, 10 DPS poison</div><div>Mine: 20c, 14 dmg, 40 splash</div><div>Wall: 15c</div></div>");
+    lines.push("<div><strong>Tower Stats</strong><div>Watch: 45c, 100r, 0.95s, 9 dmg</div><div>Freeze: 80c, 120r, 1.3s, gas slow</div><div>Drone: 95c, 120r, 0.75s, 10 dmg</div><div>Bomb: 100c, 120r, 1.5s, 18 dmg, 36 splash</div><div>Laser: 160c, 190r, 1.35s, 18 dmg, pierce, burn upgrade</div><div>Dart: 85c, 140r, 0.8s, 6 dmg, 10 DPS poison</div><div>Spike: 85c, drill spikes</div><div>Mine: 20c, 14 dmg, 40 splash</div></div>");
     lines.push("<div><strong>Enemy Stats</strong><div>Grunt: base HP 20 + 5*wave, base speed 26 + 2.6*wave</div><div>Speedy: faster version of grunt</div><div>Heavy: 2.4x HP, 0.6x speed</div><div>Boss: 6x HP</div><div>Tiers: +35% HP and +6% speed per tier</div></div>");
   }
   ui.encyclopedia.innerHTML = lines.length > 0 ? lines.join("") : "<div>Encounter enemies to learn about them.</div>";
@@ -926,6 +954,48 @@ function startWave() {
   }
   state.spawnTimer = 0;
   updateHud();
+  handleWaveAlerts(state.wave);
+}
+
+function showAlert(title, message, pauseWave = false) {
+  if (!ui.alertModal || !ui.alertTitle || !ui.alertContent) return;
+  ui.alertTitle.textContent = title;
+  ui.alertContent.innerHTML = message;
+  ui.alertModal.classList.remove("hidden");
+  if (pauseWave && state.waveInProgress) {
+    setPauseState(true);
+  }
+}
+
+function handleWaveAlerts(wave) {
+  if (wave === 2) {
+    showAlert(
+      "Stealth Incoming",
+      "<p>Stealth enemies arrive on Wave 4.</p><p>Build <strong>Watch Towers</strong> to reveal them.</p>"
+    );
+  } else if (wave === 3) {
+    showAlert(
+      "Armored Incoming",
+      "<p>Armored enemies arrive on Wave 5.</p><p><strong>Bomb</strong> and <strong>Laser</strong> towers crack armor fastest.</p>"
+    );
+  } else if (wave === 4) {
+    showAlert(
+      "Stealth Wave",
+      "<p>Stealth enemies are here.</p><p>Place <strong>Watch Towers</strong> to reveal them.</p>",
+      true
+    );
+  } else if (wave === 5) {
+    showAlert(
+      "Armored Wave",
+      "<p>Armored enemies are here.</p><p>Use <strong>Bomb</strong> and <strong>Laser</strong> towers to break armor.</p>",
+      true
+    );
+  } else if (wave === 13) {
+    showAlert(
+      "Diamonds Incoming",
+      "<p>Diamond enemies arrive on Wave 15.</p><p>Prepare high damage and armor-breaking towers.</p>"
+    );
+  }
 }
 
 function togglePauseWave() {
@@ -935,10 +1005,14 @@ function togglePauseWave() {
       flashButton(ui.pauseWave);
       return;
     }
-    state.paused = true;
-  } else {
-    state.paused = false;
+    setPauseState(true);
+    return;
   }
+  setPauseState(false);
+}
+
+function setPauseState(paused) {
+  state.paused = paused;
   if (ui.pauseWave) {
     ui.pauseWave.textContent = state.paused ? "Resume Wave" : "Pause Wave";
   }
@@ -1119,16 +1193,9 @@ function placeTower(type, x, y) {
   if (!state.gameStarted) return;
   if (!data) return;
   if (type === "op" && state.opPlaced) return;
-  const hasWall = state.towers.some((tower) => tower.type === "wall" && tower.x === x && tower.y === y);
-  if (isOnPath(x, y) && !data.allowOnPath && !hasWall) return;
+  if (isOnPath(x, y) && !data.allowOnPath) return;
   if ((type === "mine" || type === "floorSpike") && !isOnPath(x, y)) return;
-  if (type !== "wall" && type !== "op" && type !== "mine" && type !== "floorSpike" && type !== "drone") {
-    if (!hasWall) return;
-  }
-  if (type === "drone") {
-    if (hasWall) return;
-    if (isOnPath(x, y)) return;
-  }
+  if (type === "drone" && isOnPath(x, y)) return;
   for (const tower of state.towers) {
     const towerData = towerTypes[tower.type];
     if (towerData && towerData.noGridlock) continue;
@@ -1136,9 +1203,6 @@ function placeTower(type, x, y) {
     const towerY = tower.type === "drone" && Number.isFinite(tower.baseY) ? tower.baseY : tower.y;
     const overlap = Math.hypot(towerX - x, towerY - y) < 30;
     if (!overlap) continue;
-    if (tower.type === "wall" && type !== "wall") {
-      continue;
-    }
     return;
   }
   if (data.blocksPath) {
@@ -1150,69 +1214,9 @@ function placeTower(type, x, y) {
       || (cell.cx === endCell.cx && cell.cy === endCell.cy)) {
       return;
     }
-    const multiPortal = startCells.length > 1;
-    if (state.waveInProgress && !state.paused) {
-      const blocked = buildBlockedSet(cell);
-      const currentPaths = getActivePaths();
-      const newPaths = [];
-      for (const startCell of startCells) {
-        const newPath = buildPathPoints(startCell, endCell, blocked);
-        if (!newPath) return;
-        newPaths.push(newPath);
-      }
-      if (newPaths.length !== currentPaths.length) return;
-      for (let i = 0; i < newPaths.length; i += 1) {
-        const newPath = newPaths[i];
-        const currentPath = currentPaths[i];
-        if (!currentPath || newPath.length !== currentPath.length) return;
-        for (let j = 0; j < newPath.length; j += 1) {
-          if (newPath[j].x !== currentPath[j].x || newPath[j].y !== currentPath[j].y) {
-            return;
-          }
-        }
-      }
-      state.pathPoints = newPaths;
-    } else {
-      if (state.paused && !multiPortal) {
-        const blocked = buildBlockedSet(cell);
-        const newPath = buildPathPoints(startCells[0], endCell, blocked);
-        if (!newPath) return;
-        for (const enemy of state.enemies) {
-          if (enemy.hp <= 0) continue;
-          const currentPath = enemy.path && enemy.path.length > 0 ? enemy.path : getActivePaths()[0];
-          if (!currentPath || currentPath.length < 2) continue;
-          const currentCell = worldToCell(enemy.x, enemy.y);
-          const currentPoint = cellToWorld(currentCell.cx, currentCell.cy);
-          const nextIndex = Math.min(enemy.pathIndex + 1, currentPath.length - 1);
-          const nextPoint = currentPath[nextIndex];
-          const nextCell = worldToCell(nextPoint.x, nextPoint.y);
-          const nextPointCell = cellToWorld(nextCell.cx, nextCell.cy);
-          let currentPathIndex = -1;
-          let nextPathIndex = -1;
-          for (let i = 0; i < newPath.length; i += 1) {
-            const point = newPath[i];
-            if (point.x === currentPoint.x && point.y === currentPoint.y) {
-              currentPathIndex = i;
-            }
-            if (point.x === nextPointCell.x && point.y === nextPointCell.y) {
-              nextPathIndex = i;
-            }
-          }
-          if (currentPathIndex === -1 || nextPathIndex === -1) {
-            return;
-          }
-          if (nextPathIndex !== currentPathIndex + 1) {
-            return;
-          }
-        }
-        state.pathPoints = [newPath];
-        updateEnemyPaths();
-      } else {
-        if (!recomputeGlobalPath(cell)) return;
-      }
-    }
+    if (!recomputeGlobalPath(cell)) return;
   }
-  const cost = type === "wall" && state.wallsPlaced === 0 ? 0 : data.cost;
+  const cost = data.cost;
   if (!canAfford(cost)) {
     flashButton(buildButtons[type]);
     return;
@@ -1259,10 +1263,6 @@ function placeTower(type, x, y) {
     state.opPlaced = true;
     ui.buildOp.disabled = true;
   }
-  if (type === "wall") {
-    state.wallsPlaced += 1;
-    ui.buildWall.textContent = "Wall (10)";
-  }
   state.towers.push(tower);
   updateHud();
 }
@@ -1276,16 +1276,16 @@ function getUpgradeBaseCost(tower) {
 function getUpgradeCost(tower) {
   const baseCost = getUpgradeBaseCost(tower);
   const level = tower.level || 1;
-  return baseCost * Math.pow(1.8, Math.max(0, level - 1));
+  return Math.round(baseCost * Math.pow(1.8, Math.max(0, level - 1)));
 }
 
 function getUpgradeCostToLevel(currentLevel, targetLevel, tower) {
   const baseCost = tower ? getUpgradeBaseCost(tower) : 50;
   let total = 0;
   for (let level = currentLevel; level < targetLevel; level += 1) {
-    total += baseCost * Math.pow(1.8, Math.max(0, level - 1));
+    total += Math.round(baseCost * Math.pow(1.8, Math.max(0, level - 1)));
   }
-  return total;
+  return Math.round(total);
 }
 
 function upgradeTower(tower) {
@@ -4273,7 +4273,7 @@ function handleEnemyDeath(enemy) {
     spawnSplitEnemy(enemy, nextTier);
     spawnSplitEnemy(enemy, nextTier);
   }
-  awardGold(15);
+  awardGold(8);
 }
 
 function spawnArmorShatter(x, y, count = 12) {
@@ -4718,7 +4718,7 @@ function drawDroneBody(x, y, scale = 1, color = "#34d399") {
 function drawTowers() {
   for (const tower of state.towers) {
     const data = towerTypes[tower.type];
-    if (data.blocksPath) {
+    if (tower.type === "wall") {
       ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
       ctx.fillRect(tower.x - 16, tower.y - 16, 32, 32);
       ctx.strokeStyle = "rgba(56, 189, 248, 0.65)";
@@ -4879,7 +4879,17 @@ function drawTowers() {
         const stroke = shadeColor(base, 0.55);
         ctx.fillStyle = base;
         ctx.beginPath();
-        ctx.arc(tower.x, tower.y, 14, 0, Math.PI * 2);
+        for (let i = 0; i < 5; i += 1) {
+          const angle = -Math.PI / 2 + (i * Math.PI * 2) / 5;
+          const px = tower.x + Math.cos(angle) * 14;
+          const py = tower.y + Math.sin(angle) * 14;
+          if (i === 0) {
+            ctx.moveTo(px, py);
+          } else {
+            ctx.lineTo(px, py);
+          }
+        }
+        ctx.closePath();
         ctx.fill();
         ctx.strokeStyle = stroke;
         ctx.lineWidth = 2;
@@ -5431,13 +5441,9 @@ function drawPlacementPreview() {
   const snapped = snapToGrid(x, y);
   const data = towerTypes[state.placing];
   if (!data) return;
-  const hasWall = state.towers.some((tower) => tower.type === "wall" && tower.x === snapped.x && tower.y === snapped.y);
-  const invalidPath = isOnPath(snapped.x, snapped.y) && !data.allowOnPath && !hasWall;
-  const requiresWall = state.placing !== "wall" && state.placing !== "drone" && state.placing !== "op" && state.placing !== "mine" && state.placing !== "floorSpike";
-  const invalidWall = requiresWall && !hasWall;
+  const invalidPath = isOnPath(snapped.x, snapped.y) && !data.allowOnPath;
   const invalidMine = (state.placing === "mine" || state.placing === "floorSpike") && !isOnPath(snapped.x, snapped.y);
-  const invalidDrone = state.placing === "drone" && (hasWall || isOnPath(snapped.x, snapped.y));
-  const invalid = invalidPath || invalidWall || invalidMine || invalidDrone;
+  const invalid = invalidPath || invalidMine;
   ctx.strokeStyle = invalid ? "rgba(239, 68, 68, 0.8)" : "rgba(34, 197, 94, 0.8)";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -5701,14 +5707,16 @@ if (ui.buildFloorSpike) {
   });
 }
 
-ui.buildWall.addEventListener("click", () => {
-  const cost = state.wallsPlaced === 0 ? 0 : towerTypes.wall.cost;
-  if (!canAfford(cost)) {
-    flashButton(buildButtons.wall);
-    return;
-  }
-  state.placing = "wall";
-});
+if (ui.buildWall) {
+  ui.buildWall.addEventListener("click", () => {
+    const cost = towerTypes.wall.cost;
+    if (!canAfford(cost)) {
+      flashButton(buildButtons.wall);
+      return;
+    }
+    state.placing = "wall";
+  });
+}
 
 ui.buildOp.addEventListener("click", () => {
   if (!state.easterUnlocked) return;
@@ -6019,6 +6027,13 @@ if (ui.autoWave) {
   });
 }
 
+if (ui.halfCash) {
+  ui.halfCash.addEventListener("click", () => {
+    state.halfCash = !state.halfCash;
+    updateHud();
+  });
+}
+
 if (ui.openEncyclopedia) {
   ui.openEncyclopedia.addEventListener("click", () => {
     if (!ui.encyclopediaModal) return;
@@ -6049,6 +6064,20 @@ if (ui.encyclopediaModal) {
 if (ui.openTips) {
   ui.openTips.addEventListener("click", () => {
     if (ui.tipsModal) ui.tipsModal.classList.remove("hidden");
+  });
+}
+
+if (ui.closeAlert) {
+  ui.closeAlert.addEventListener("click", () => {
+    if (ui.alertModal) ui.alertModal.classList.add("hidden");
+  });
+}
+
+if (ui.alertModal) {
+  ui.alertModal.addEventListener("click", (event) => {
+    if (event.target === ui.alertModal) {
+      ui.alertModal.classList.add("hidden");
+    }
   });
 }
 
@@ -6262,6 +6291,10 @@ if (ui.tipsModal) {
   ui.tipsModal.classList.add("hidden");
 }
 
+if (ui.alertModal) {
+  ui.alertModal.classList.add("hidden");
+}
+
 if (ui.tutorialModal) {
   ui.tutorialModal.classList.add("hidden");
 }
@@ -6317,6 +6350,7 @@ function resetGame() {
   state.waveSpeed = 1;
   state.towerLevelCap = 5;
   state.infiniteGold = false;
+  state.halfCash = false;
   state.keyBuffer = "";
   state.jasperProgress = 0;
   if (ui.jasperControls) ui.jasperControls.classList.add("hidden");
@@ -6333,6 +6367,7 @@ function resetGame() {
   if (ui.tipsModal) ui.tipsModal.classList.add("hidden");
   if (ui.tutorialModal) ui.tutorialModal.classList.add("hidden");
   if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
+  if (ui.alertModal) ui.alertModal.classList.add("hidden");
   setActiveMap(state.mapId);
   recomputeGlobalPath();
   updateHud();

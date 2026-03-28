@@ -58,7 +58,7 @@
       <header class="topbar">
         <div>
           <h1>Tower Defense Mini v1</h1>
-          <p>Place towers on walls on void. Enemies follow the path. Don’t let 20 through.</p>
+          <p>Place towers on the void. Enemies reroute around defenses. Don’t let 100 through.</p>
         </div>
         <div class="topbar-actions">
           <button id="start-wave">Start Wave</button>
@@ -76,10 +76,11 @@
         </div>
         <div class="topbar-secondary">
           <button id="open-jasper" class="btn-small btn-jasper hidden">Jasper Menu</button>
+          <button id="half-cash" class="btn-small">Half Cash: Off</button>
         </div>
         <div class="hud">
-          <div>Lives: <span id="lives">20</span></div>
-          <div>Gold: <span id="gold">120</span></div>
+          <div>Lives: <span id="lives">100</span></div>
+          <div>Gold: <span id="gold">200</span></div>
           <div>Wave: <span id="wave">0</span></div>
           <div>Damage: <span id="damage">0</span></div>
         </div>
@@ -96,18 +97,17 @@
           <h2>Build</h2>
           <div class="panel-grid">
             <div class="build-list">
-              <button id="build-watch" class="btn-watch">Watch Tower (40)</button>
-              <button id="build-freeze" class="btn-freeze">Freeze Tower (70)</button>
-              <button id="build-drone" class="btn-drone">Drone Tower (80)</button>
-              <button id="build-bomb" class="btn-bomb">Bomb Tower (85)</button>
-              <button id="build-laser" class="btn-laser">Laser Tower (100)</button>
-              <button id="build-flame" class="btn-flame">Flamethrower (90)</button>
-              <button id="build-dart" class="btn-dart">Dart Tower (75)</button>
-              <button id="build-trap" class="btn-trap">Trap Setter (95)</button>
-              <button id="build-spike" class="btn-bomb">Spike Tower (70)</button>
-              <button id="build-mine" class="btn-mine">Mine (15)</button>
-              <button id="build-floor-spike" class="btn-mine">Floor Spikes (50)</button>
-              <button id="build-wall" class="btn-wall">Wall (10)</button>
+              <button id="build-watch" class="btn-watch">Watch Tower (45)</button>
+              <button id="build-freeze" class="btn-freeze">Freeze Tower (80)</button>
+              <button id="build-drone" class="btn-drone">Drone Tower (95)</button>
+              <button id="build-bomb" class="btn-bomb">Bomb Tower (100)</button>
+              <button id="build-laser" class="btn-laser">Laser Tower (160)</button>
+              <button id="build-flame" class="btn-flame">Flamethrower (105)</button>
+              <button id="build-dart" class="btn-dart">Dart Tower (85)</button>
+              <button id="build-trap" class="btn-trap">Trap Setter (110)</button>
+              <button id="build-spike" class="btn-bomb">Spike Tower (85)</button>
+              <button id="build-mine" class="btn-mine">Mine (20)</button>
+              <button id="build-floor-spike" class="btn-mine">Floor Spikes (60)</button>
             </div>
             <div class="upgrade-panel" id="upgrade-panel">
               <strong>Upgrade</strong>
@@ -119,10 +119,6 @@
               <div class="control-row upgrade-target-row hidden" id="upgrade-target-action">
                 <span></span>
                 <button id="upgrade-to">Upgrade</button>
-              </div>
-              <div class="control-row upgrade-target-row hidden" id="wall-upgrade-action">
-                <span></span>
-                <button id="upgrade-wall">Upgrade Wall</button>
               </div>
               <div class="control-row upgrade-target-row hidden" id="trap-upgrade-action">
                 <span></span>
@@ -219,6 +215,18 @@
         </div>
       </div>
     </div>
+    <div id="alert-modal" class="encyclopedia-modal hidden" role="dialog" aria-modal="true">
+      <div class="encyclopedia-card">
+        <div class="encyclopedia-header">
+          <span class="encyclopedia-icon">!</span>
+          <span class="encyclopedia-title" id="alert-title">WAVE ALERT</span>
+        </div>
+        <div id="alert-content" class="encyclopedia-content"></div>
+        <div class="encyclopedia-actions">
+          <button id="close-alert" class="btn-secondary" type="button">Continue</button>
+        </div>
+      </div>
+    </div>
     <div id="tutorial-modal" class="encyclopedia-modal hidden" role="dialog" aria-modal="true">
       <div class="encyclopedia-card">
         <div class="encyclopedia-header">
@@ -228,7 +236,7 @@
         <div id="tutorial-modal-content" class="encyclopedia-content">
           <div class="tips-list">
             <p>Start a wave to spawn enemies. Press <kbd>Space</kbd> to start or pause a wave.</p>
-            <p>Build towers only on walls or the void, not on the path. Enemies follow the glowing path.</p>
+            <p>Build towers on the void, not on the path. Enemies reroute around defenses.</p>
             <p>Watch and Laser towers deal direct damage. Freeze slows. Bombs splash. Darts poison. Drones can be upgraded via their base.</p>
             <p>Flamethrowers burn targets in a cone and leave a DOT after enemies exit range. Trap Setters spawn traps on the path.</p>
             <p>Upgrade a tower by clicking it, then clicking again. Right-click sells for 80% back.</p>

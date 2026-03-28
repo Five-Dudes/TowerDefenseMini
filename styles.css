@@ -35,7 +35,7 @@ body {
 
 .topbar {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto minmax(160px, 200px);
   gap: 10px;
   align-items: center;
   background: rgba(6, 14, 28, 0.85);
@@ -61,6 +61,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
 }
 
 .topbar h1 {
@@ -80,10 +81,12 @@ body {
   display: grid;
   gap: 6px;
   font-size: 0.95rem;
+  min-width: 160px;
+  justify-self: end;
 }
 .hud span {
   display: inline-block;
-  min-width: 4ch;
+  min-width: 7ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
