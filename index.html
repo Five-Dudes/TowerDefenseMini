@@ -14,7 +14,24 @@
       <div id="title-screen" class="title-screen">
         <div class="title-card">
           <h1>Tower Defense Mini v1</h1>
-          <p>Choose your difficulty to begin.</p>
+          <p>Choose your map and difficulty to begin.</p>
+          <div class="map-picker">
+            <div class="map-label">Map Select</div>
+            <div class="map-grid">
+              <button class="map-card active" data-map="rift">
+                <span class="map-name">Void Rift</span>
+                <span class="map-desc">Classic bend.</span>
+              </button>
+              <button class="map-card" data-map="twin">
+                <span class="map-name">Twin Marsh</span>
+                <span class="map-desc">Two portals converge.</span>
+              </button>
+              <button class="map-card" data-map="crystal">
+                <span class="map-name">Crystal Basin</span>
+                <span class="map-desc">Zig-zag corridors.</span>
+              </button>
+            </div>
+          </div>
           <div class="difficulty-buttons">
             <button data-difficulty="easy">Easy</button>
             <button data-difficulty="medium">Medium</button>

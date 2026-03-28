@@ -181,6 +181,18 @@ const state = {
   autoWave: false,
   waveSpeed: 1,
   towerLevelCap: 5,
+  mapId: "rift",
+  mapPaths: [],
+  mapStartCells: [],
+  mapEndCell: null,
+  mapEndPoint: null,
+  mapPalette: {
+    top: "#200b3b",
+    mid: "#130820",
+    bottom: "#0c0516",
+    shadow: "rgba(0, 0, 0, 0.3)",
+  },
+  preferredPathCells: new Set(),
   difficultyMultipliers: {
     enemyHp: 1,
     enemySpeed: 1,
@@ -205,13 +217,88 @@ const state = {
   sixSevenTimer: null,
 };
 
-const path = [
-  { x: 40, y: 70 },
-  { x: 260, y: 70 },
-  { x: 260, y: 220 },
-  { x: 560, y: 220 },
-  { x: 560, y: 420 },
-  { x: 900, y: 420 },
+const maps = [
+  {
+    id: "rift",
+    name: "Void Rift",
+    desc: "Classic bend through the void.",
+    palette: {
+      top: "#200b3b",
+      mid: "#130820",
+      bottom: "#0c0516",
+      shadow: "rgba(0, 0, 0, 0.3)",
+    },
+    paths: [
+      [
+        { x: 40, y: 70 },
+        { x: 260, y: 70 },
+        { x: 260, y: 220 },
+        { x: 560, y: 220 },
+        { x: 560, y: 420 },
+        { x: 900, y: 420 },
+      ],
+    ],
+  },
+  {
+    id: "twin",
+    name: "Twin Marsh",
+    desc: "Two portals converge at the midpoint.",
+    palette: {
+      top: "#0b2a2f",
+      mid: "#0f1b2a",
+      bottom: "#050c14",
+      shadow: "rgba(2, 8, 12, 0.3)",
+    },
+    paths: [
+      [
+        { x: 40, y: 70 },
+        { x: 260, y: 70 },
+        { x: 260, y: 300 },
+        { x: 520, y: 300 },
+        { x: 520, y: 440 },
+        { x: 900, y: 440 },
+      ],
+      [
+        { x: 40, y: 470 },
+        { x: 260, y: 470 },
+        { x: 260, y: 300 },
+        { x: 520, y: 300 },
+        { x: 520, y: 440 },
+        { x: 900, y: 440 },
+      ],
+    ],
+  },
+  {
+    id: "crystal",
+    name: "Crystal Basin",
+    desc: "Zig-zag corridors of crystal.",
+    palette: {
+      top: "#10284f",
+      mid: "#111936",
+      bottom: "#080e22",
+      shadow: "rgba(4, 8, 22, 0.35)",
+    },
+    paths: [
+      [
+        { x: 80, y: 60 },
+        { x: 80, y: 260 },
+        { x: 360, y: 260 },
+        { x: 360, y: 120 },
+        { x: 660, y: 120 },
+        { x: 660, y: 420 },
+        { x: 900, y: 420 },
+      ],
+      [
+        { x: 80, y: 500 },
+        { x: 80, y: 300 },
+        { x: 360, y: 300 },
+        { x: 360, y: 420 },
+        { x: 660, y: 420 },
+        { x: 660, y: 220 },
+        { x: 900, y: 220 },
+      ],
+    ],
+  },
 ];
 
 const grid = {
@@ -415,10 +502,30 @@ function snapToGrid(x, y) {
   return { x: gx, y: gy };
 }
 
-const startPoint = snapToGrid(path[0].x, path[0].y);
-const endPoint = snapToGrid(path[path.length - 1].x, path[path.length - 1].y);
-const startCell = worldToCell(startPoint.x, startPoint.y);
-const endCell = worldToCell(endPoint.x, endPoint.y);
+function normalizePaths(paths) {
+  return paths.map((path) => path.map((point) => snapToGrid(point.x, point.y)));
+}
+
+function getActiveMap() {
+  return maps.find((entry) => entry.id === state.mapId) || maps[0];
+}
+
+function setActiveMap(mapId) {
+  const map = maps.find((entry) => entry.id === mapId) || maps[0];
+  state.mapId = map.id;
+  state.mapPaths = normalizePaths(map.paths);
+  state.mapStartCells = state.mapPaths.map((path) => worldToCell(path[0].x, path[0].y));
+  const endPoint = map.paths[0][map.paths[0].length - 1];
+  state.mapEndPoint = snapToGrid(endPoint.x, endPoint.y);
+  state.mapEndCell = worldToCell(state.mapEndPoint.x, state.mapEndPoint.y);
+  state.mapPalette = map.palette || state.mapPalette;
+  state.pathPoints = [];
+  state.preferredPathCells = buildPreferredPathCells(state.mapPaths);
+}
+
+function getActivePaths() {
+  return state.pathPoints.length > 0 ? state.pathPoints : state.mapPaths;
+}
 
 function isPointNearPath(points, x, y, buffer) {
   for (let i = 0; i < points.length - 1; i += 1) {
@@ -435,14 +542,24 @@ function isPointNearPath(points, x, y, buffer) {
   return false;
 }
 
-const preferredPathCells = new Set();
-for (let cx = 0; cx < gridCols; cx += 1) {
-  for (let cy = 0; cy < gridRows; cy += 1) {
-    const { x, y } = cellToWorld(cx, cy);
-    if (isPointNearPath(path, x, y, 18)) {
-      preferredPathCells.add(cellKey(cx, cy));
+function isPointNearAnyPath(paths, x, y, buffer) {
+  for (const points of paths) {
+    if (isPointNearPath(points, x, y, buffer)) return true;
+  }
+  return false;
+}
+
+function buildPreferredPathCells(paths) {
+  const cells = new Set();
+  for (let cx = 0; cx < gridCols; cx += 1) {
+    for (let cy = 0; cy < gridRows; cy += 1) {
+      const { x, y } = cellToWorld(cx, cy);
+      if (isPointNearAnyPath(paths, x, y, 18)) {
+        cells.add(cellKey(cx, cy));
+      }
     }
   }
+  return cells;
 }
 
 function buildBlockedSet(extraCell) {
@@ -509,7 +626,7 @@ function findPath(fromCell, toCell, blocked) {
       if (neighbor.cx < 0 || neighbor.cy < 0 || neighbor.cx >= gridCols || neighbor.cy >= gridRows) continue;
       const neighborKey = cellKey(neighbor.cx, neighbor.cy);
       if (blocked.has(neighborKey)) continue;
-      const moveCost = preferredPathCells.has(neighborKey) ? 1 : 4;
+      const moveCost = state.preferredPathCells.has(neighborKey) ? 1 : 4;
       const tentative = coalesce(gScore.get(currentKey), Infinity) + moveCost;
       if (tentative < coalesce(gScore.get(neighborKey), Infinity)) {
         cameFrom.set(neighborKey, currentKey);
@@ -531,6 +648,8 @@ function buildPathPoints(fromCell, toCell, blocked) {
 
 function updateEnemyPaths() {
   const blocked = buildBlockedSet();
+  const endCell = state.mapEndCell;
+  if (!endCell) return;
   for (const enemy of state.enemies) {
     const currentCell = worldToCell(enemy.x, enemy.y);
     const pathPoints = buildPathPoints(currentCell, endCell, blocked);
@@ -542,17 +661,24 @@ function updateEnemyPaths() {
 
 function recomputeGlobalPath(extraBlockedCell) {
   const blocked = buildBlockedSet(extraBlockedCell);
-  const pathPoints = buildPathPoints(startCell, endCell, blocked);
-  if (!pathPoints) return false;
-  state.pathPoints = pathPoints;
+  const endCell = state.mapEndCell;
+  if (!endCell) return false;
+  const startCells = state.mapStartCells.length > 0 ? state.mapStartCells : [];
+  const newPaths = [];
+  for (const startCell of startCells) {
+    const pathPoints = buildPathPoints(startCell, endCell, blocked);
+    if (!pathPoints) return false;
+    newPaths.push(pathPoints);
+  }
+  state.pathPoints = newPaths;
   updateEnemyPaths();
   cleanupOffPathFloorSpikes();
   return true;
 }
 
 function isOnPath(x, y) {
-  const points = state.pathPoints.length > 0 ? state.pathPoints : path;
-  return isPointNearPath(points, x, y, 18);
+  const paths = getActivePaths();
+  return isPointNearAnyPath(paths, x, y, 18);
 }
 
 function cleanupOffPathFloorSpikes() {
@@ -837,11 +963,11 @@ function spawnEnemy() {
     type = "speedy";
   } else if (roll < 0.22) {
     type = "heavy";
-  } else if (roll < 0.3) {
+  } else if (roll < 0.3 && state.wave >= 4) {
     type = "stealth";
   } else if (roll < 0.36) {
     type = "labrat";
-  } else if (roll < 0.42) {
+  } else if (roll < 0.42 && state.wave >= 15) {
     type = "diamond";
   } else if (roll < 0.48 && state.wave >= 10) {
     type = "swarm";
@@ -849,20 +975,26 @@ function spawnEnemy() {
   let armored = false;
   let darkMatter = false;
   let stealth = type === "stealth";
-  const advanced = state.wave >= 3;
-  if (advanced) {
-    if (Math.random() < 0.18) armored = true;
-    if (Math.random() < 0.15) darkMatter = true;
-    if (Math.random() < 0.18) stealth = true;
-  }
+  const allowArmored = state.wave >= 5;
+  const allowStealthRoll = state.wave >= 4;
+  const allowDarkMatter = state.wave >= 3;
+  if (allowArmored && Math.random() < 0.18) armored = true;
+  if (allowDarkMatter && Math.random() < 0.15) darkMatter = true;
+  if (allowStealthRoll && Math.random() < 0.18) stealth = true;
   if (type === "diamond" || type === "boss_diamond") {
     armored = true;
     darkMatter = false;
   }
   if (type === "swarm") {
     registerEnemyInEncyclopedia(type, armored, darkMatter);
+    const pathGroup = Math.floor(Math.random() * getActivePaths().length);
     for (let i = 0; i < 20; i += 1) {
-      state.enemies.push(createEnemy("swarmlet", { armored: false, darkMatter: false, stealth: false }));
+      state.enemies.push(createEnemy("swarmlet", {
+        armored: false,
+        darkMatter: false,
+        stealth: false,
+        pathGroup,
+      }));
     }
     return;
   }
@@ -887,7 +1019,8 @@ function registerEnemyInEncyclopedia(type, armored, darkMatter, stealth = false)
 
 function createEnemy(type, options = {}) {
   const isBoss = isBossType(type);
-  const isFast = type === "speedy" || type === "boss_fast" || type === "swarmlet";
+  const isFast = type === "speedy" || type === "boss_fast";
+  const isSwarmlet = type === "swarmlet";
   const isHeavy = type === "heavy" || type === "boss_pentagon" || type === "boss_hexagon";
   const isDiamond = type === "diamond" || type === "boss_diamond";
   const tier = isBoss ? 3 : Math.min(3, Math.floor((state.wave - 1) / 6) + 1);
@@ -909,9 +1042,9 @@ function createEnemy(type, options = {}) {
     maxHp *= 0.9;
     speed *= 0.95;
   }
-  if (type === "swarmlet") {
+  if (isSwarmlet) {
     maxHp *= 0.2;
-    speed *= 1.35;
+    speed *= 1.15;
   }
   const speedMultiplier = state.difficultyMultipliers.enemySpeed || 1;
   const radioactive = type === "labrat" ? false : (options.radioactive || state.radioactiveWave === state.wave);
@@ -919,7 +1052,9 @@ function createEnemy(type, options = {}) {
     maxHp *= 0.5;
     speed *= 0.5;
   }
-  const pathPoints = state.pathPoints.length > 0 ? state.pathPoints : [startPoint, endPoint];
+  const activePaths = getActivePaths();
+  const pathGroup = coalesce(options.pathGroup, Math.floor(Math.random() * activePaths.length));
+  const pathPoints = activePaths[pathGroup] || activePaths[0];
   const start = pathPoints[0];
   const pathOffset = type === "swarmlet"
     ? { x: (Math.random() - 0.5) * 18, y: (Math.random() - 0.5) * 18 }
@@ -957,6 +1092,7 @@ function createEnemy(type, options = {}) {
     immuneExplosion: isDiamond,
     explosionVulnerable: type === "swarmlet",
     pathOffset,
+    pathGroup,
     castleDamage: baseCastleDamage,
   };
   if (enemy.armored) {
@@ -1007,30 +1143,43 @@ function placeTower(type, x, y) {
   }
   if (data.blocksPath) {
     const cell = worldToCell(x, y);
-    if ((cell.cx === startCell.cx && cell.cy === startCell.cy)
+    const endCell = state.mapEndCell;
+    const startCells = state.mapStartCells.length > 0 ? state.mapStartCells : [];
+    if (!endCell) return;
+    if (startCells.some((startCell) => cell.cx === startCell.cx && cell.cy === startCell.cy)
       || (cell.cx === endCell.cx && cell.cy === endCell.cy)) {
       return;
     }
+    const multiPortal = startCells.length > 1;
     if (state.waveInProgress && !state.paused) {
       const blocked = buildBlockedSet(cell);
-      const newPath = buildPathPoints(startCell, endCell, blocked);
-      if (!newPath) return;
-      const currentPath = state.pathPoints.length > 0 ? state.pathPoints : path;
-      if (newPath.length !== currentPath.length) return;
-      for (let i = 0; i < newPath.length; i += 1) {
-        if (newPath[i].x !== currentPath[i].x || newPath[i].y !== currentPath[i].y) {
-          return;
+      const currentPaths = getActivePaths();
+      const newPaths = [];
+      for (const startCell of startCells) {
+        const newPath = buildPathPoints(startCell, endCell, blocked);
+        if (!newPath) return;
+        newPaths.push(newPath);
+      }
+      if (newPaths.length !== currentPaths.length) return;
+      for (let i = 0; i < newPaths.length; i += 1) {
+        const newPath = newPaths[i];
+        const currentPath = currentPaths[i];
+        if (!currentPath || newPath.length !== currentPath.length) return;
+        for (let j = 0; j < newPath.length; j += 1) {
+          if (newPath[j].x !== currentPath[j].x || newPath[j].y !== currentPath[j].y) {
+            return;
+          }
         }
       }
-      state.pathPoints = newPath;
+      state.pathPoints = newPaths;
     } else {
-      if (state.paused) {
+      if (state.paused && !multiPortal) {
         const blocked = buildBlockedSet(cell);
-        const newPath = buildPathPoints(startCell, endCell, blocked);
+        const newPath = buildPathPoints(startCells[0], endCell, blocked);
         if (!newPath) return;
         for (const enemy of state.enemies) {
           if (enemy.hp <= 0) continue;
-          const currentPath = enemy.path && enemy.path.length > 0 ? enemy.path : state.pathPoints;
+          const currentPath = enemy.path && enemy.path.length > 0 ? enemy.path : getActivePaths()[0];
           if (!currentPath || currentPath.length < 2) continue;
           const currentCell = worldToCell(enemy.x, enemy.y);
           const currentPoint = cellToWorld(currentCell.cx, currentCell.cy);
@@ -1056,7 +1205,7 @@ function placeTower(type, x, y) {
             return;
           }
         }
-        state.pathPoints = newPath;
+        state.pathPoints = [newPath];
         updateEnemyPaths();
       } else {
         if (!recomputeGlobalPath(cell)) return;
@@ -2790,7 +2939,7 @@ function updateProjectiles(dt) {
             }
           }
           if (proj.knockbackChance > 0 && Math.random() < proj.knockbackChance * dt) {
-            const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : state.pathPoints;
+            const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : (getActivePaths()[0] || []);
             if (pathPoints && enemy.pathIndex > 0) {
               const prev = pathPoints[enemy.pathIndex - 1];
               const dx = prev.x - enemy.x;
@@ -3333,7 +3482,7 @@ function spawnTrapFrom(tower, stats) {
 }
 
 function getEnemyProgress(enemy) {
-  const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : state.pathPoints;
+  const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : (getActivePaths()[0] || []);
   if (!pathPoints || pathPoints.length < 2) return enemy.pathIndex || 0;
   const idx = Math.min(enemy.pathIndex || 0, pathPoints.length - 2);
   const current = pathPoints[idx];
@@ -3803,7 +3952,7 @@ function updateEnemies(dt) {
     }
     const slowFactor = enemy.slowTimer > 0 ? enemy.slowFactor || 0 : 0;
     const speed = enemy.speed * (1 - slowFactor);
-    const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : state.pathPoints;
+    const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : (getActivePaths()[0] || []);
     if (!pathPoints || pathPoints.length < 2) continue;
     const nextIndex = Math.min(enemy.pathIndex + 1, pathPoints.length - 1);
     const target = pathPoints[nextIndex];
@@ -4300,7 +4449,7 @@ function updateSpawner(dt) {
 }
 
 function drawPath() {
-  const points = state.pathPoints.length > 0 ? state.pathPoints : path;
+  const paths = getActivePaths();
   const lossRatio = state.maxLives > 0 ? Math.min(1, Math.max(0, 1 - state.lives / state.maxLives)) : 0;
   function lerp(a, b, t) {
     return Math.round(a + (b - a) * t);
@@ -4308,43 +4457,43 @@ function drawPath() {
   function lerpColor(from, to, t) {
     return `rgb(${lerp(from[0], to[0], t)}, ${lerp(from[1], to[1], t)}, ${lerp(from[2], to[2], t)})`;
   }
-  ctx.save();
-  ctx.lineCap = "round";
+  for (const points of paths) {
+    if (!points || points.length < 2) continue;
+    ctx.save();
+    ctx.lineCap = "round";
 
-  ctx.strokeStyle = lerpColor([8, 16, 32], [40, 8, 56], lossRatio);
-  ctx.lineWidth = 40;
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i += 1) {
-    ctx.lineTo(points[i].x, points[i].y);
+    ctx.strokeStyle = lerpColor([8, 16, 32], [40, 8, 56], lossRatio);
+    ctx.lineWidth = 40;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle = lerpColor([9, 20, 36], [54, 9, 80], lossRatio);
+    ctx.lineWidth = 24;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle = lerpColor([24, 74, 110], [120, 40, 150], lossRatio);
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+
+    ctx.restore();
   }
-  ctx.stroke();
-
-  ctx.strokeStyle = lerpColor([9, 20, 36], [54, 9, 80], lossRatio);
-  ctx.lineWidth = 24;
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i += 1) {
-    ctx.lineTo(points[i].x, points[i].y);
-  }
-  ctx.stroke();
-
-  ctx.strokeStyle = lerpColor([24, 74, 110], [120, 40, 150], lossRatio);
-  ctx.lineWidth = 8;
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i += 1) {
-    ctx.lineTo(points[i].x, points[i].y);
-  }
-  ctx.stroke();
-
-  ctx.restore();
 }
 
-function drawPortal() {
-  const points = state.pathPoints.length > 0 ? state.pathPoints : path;
-  const origin = points[0];
-  const t = state.portalClock;
+function drawPortalAt(origin, t) {
   const pulse = 0.5 + Math.sin(t * 0.004) * 0.5;
   const outer = 26 + pulse * 6;
   ctx.save();
@@ -4398,8 +4547,19 @@ function drawPortal() {
   ctx.restore();
 }
 
+function drawPortal() {
+  const paths = getActivePaths();
+  const t = state.portalClock;
+  for (const points of paths) {
+    if (!points || points.length === 0) continue;
+    drawPortalAt(points[0], t);
+  }
+}
+
 function getCastlePoint() {
-  const points = state.pathPoints.length > 0 ? state.pathPoints : path;
+  if (state.mapEndPoint) return state.mapEndPoint;
+  const paths = getActivePaths();
+  const points = paths[0] || [];
   return points[points.length - 1];
 }
 
@@ -5293,17 +5453,23 @@ function drawPlacementPreview() {
 }
 
 function drawBackground() {
+  const palette = state.mapPalette || {
+    top: "#200b3b",
+    mid: "#130820",
+    bottom: "#0c0516",
+    shadow: "rgba(0, 0, 0, 0.3)",
+  };
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, "#200b3b");
-  gradient.addColorStop(0.5, "#130820");
-  gradient.addColorStop(1, "#0c0516");
+  gradient.addColorStop(0, palette.top);
+  gradient.addColorStop(0.5, palette.mid);
+  gradient.addColorStop(1, palette.bottom);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   for (const shadow of state.shadowSeeds) {
     const x = (shadow.x + performance.now() * 0.02 * shadow.speed) % (canvas.width + 120) - 60;
     const y = (shadow.y + performance.now() * 0.015 * shadow.speed) % (canvas.height + 120) - 60;
-    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.fillStyle = palette.shadow;
     ctx.beginPath();
     ctx.arc(x, y, shadow.size, 0, Math.PI * 2);
     ctx.fill();
@@ -5988,6 +6154,16 @@ if (ui.jasperModal) {
     });
   }
 
+const mapButtons = titleScreen ? Array.from(titleScreen.querySelectorAll("[data-map]")) : [];
+
+const selectMap = (mapId) => {
+  setActiveMap(mapId);
+  mapButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.map === mapId);
+  });
+  recomputeGlobalPath();
+};
+
 const selectDifficulty = (difficulty) => {
   if (difficulty === "easy") {
     state.difficultyMultipliers = { enemyHp: 0.85, enemySpeed: 0.9, gold: 1.2 };
@@ -6000,6 +6176,7 @@ const selectDifficulty = (difficulty) => {
   state.gameStarted = true;
   if (titleScreen) titleScreen.classList.add("hidden");
   if (ui.gameOver) ui.gameOver.classList.add("hidden");
+  recomputeGlobalPath();
   updateHud();
 };
 if (titleScreen) {
@@ -6015,6 +6192,19 @@ if (titleScreen) {
     button.addEventListener("click", handler);
     button.addEventListener("pointerdown", handler);
   });
+  if (mapButtons.length > 0) {
+    mapButtons.forEach((button) => {
+      const handler = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const mapId = button.dataset.map;
+        if (!mapId) return;
+        selectMap(mapId);
+      };
+      button.addEventListener("click", handler);
+      button.addEventListener("pointerdown", handler);
+    });
+  }
 }
 
 const handleTitleScreenPointer = (event) => {
@@ -6028,6 +6218,16 @@ const handleTitleScreenPointer = (event) => {
     const difficulty = difficultyButton.dataset.difficulty;
     if (difficulty) {
       selectDifficulty(difficulty);
+    }
+    return;
+  }
+  const mapButton = target.closest("[data-map]");
+  if (mapButton && titleScreen.contains(mapButton)) {
+    event.preventDefault();
+    event.stopPropagation();
+    const mapId = mapButton.dataset.map;
+    if (mapId) {
+      selectMap(mapId);
     }
     return;
   }
@@ -6133,6 +6333,7 @@ function resetGame() {
   if (ui.tipsModal) ui.tipsModal.classList.add("hidden");
   if (ui.tutorialModal) ui.tutorialModal.classList.add("hidden");
   if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
+  setActiveMap(state.mapId);
   recomputeGlobalPath();
   updateHud();
   updateEncyclopedia();
@@ -6349,7 +6550,7 @@ canvas.addEventListener("auxclick", (event) => {
   target.disabled = !target.disabled;
 });
 
-recomputeGlobalPath();
+selectMap(state.mapId);
 updateHud();
 requestAnimationFrame(loop);
 };

@@ -533,6 +533,58 @@ kbd {
   cursor: pointer;
   touch-action: manipulation;
 }
+
+.map-picker {
+  margin: 10px 0 18px;
+  text-align: left;
+}
+
+.map-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(226, 232, 240, 0.6);
+  margin-bottom: 8px;
+}
+
+.map-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.map-card {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.75);
+  color: var(--text);
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.map-card:hover {
+  border-color: rgba(94, 234, 212, 0.6);
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.2);
+  transform: translateY(-1px);
+}
+
+.map-card.active {
+  border-color: rgba(56, 189, 248, 0.9);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+}
+
+.map-name {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.map-desc {
+  font-size: 0.82rem;
+  color: rgba(226, 232, 240, 0.7);
+}
 .title-screen.hidden {
   display: none;
 }
