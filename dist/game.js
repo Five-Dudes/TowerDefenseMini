@@ -2814,6 +2814,24 @@ function fireProjectile(tower, enemy, stats) {
   }
 
   for (let i = 0; i < burstCount; i += 1) {
+    if (sourceType === "watch") {
+      if (!(enemy.armored && sourceType !== "laser" && sourceType !== "bomb" && sourceType !== "op" && !armorWeaken)) {
+        applyDamage(enemy, damage);
+        enemy.revealed = true;
+      }
+      const dx = enemy.x - tower.x;
+      const dy = enemy.y - tower.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      state.projectiles.push({
+        kind: "line",
+        x: tower.x,
+        y: tower.y,
+        vx: (dx / dist) * 120,
+        vy: (dy / dist) * 120,
+        ttl: 0.08,
+      });
+      continue;
+    }
     state.projectiles.push({
       kind: sourceType === "watch" ? "line" : "homing",
       x: tower.x,
@@ -3014,6 +3032,12 @@ function updateProjectiles(dt) {
     return;
   }
   state.projectiles = state.projectiles.filter((proj) => {
+    if (proj.kind === "line") {
+      proj.ttl = (proj.ttl || 0) - dt;
+      proj.x += (proj.vx || 0) * dt;
+      proj.y += (proj.vy || 0) * dt;
+      return proj.ttl > 0;
+    }
     if (proj.kind === "gas") {
       proj.ttl -= dt;
       if (proj.owner && proj.owner.type === "freeze") {
