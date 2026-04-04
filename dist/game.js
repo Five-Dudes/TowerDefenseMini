@@ -283,6 +283,22 @@ window.debugShoot = () => {
   }
   return { ok: true, before, after: state.projectiles.length };
 };
+window.debugStep = () => {
+  const tower = state.towers[0];
+  const before = {
+    projectiles: state.projectiles.length,
+    cooldown: tower ? tower.cooldown : null,
+    aimAngle: tower ? tower.aimAngle : null,
+  };
+  updateTowers(0.1);
+  updateProjectiles(0.1);
+  const after = {
+    projectiles: state.projectiles.length,
+    cooldown: tower ? tower.cooldown : null,
+    aimAngle: tower ? tower.aimAngle : null,
+  };
+  return { before, after };
+};
 
 const maps = [
   {
