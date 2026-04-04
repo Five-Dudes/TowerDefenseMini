@@ -3561,6 +3561,7 @@ function selectTarget(tower, stats) {
   const range = Number.isFinite(stats.range) ? stats.range : (stats.data && Number.isFinite(stats.data.range) ? stats.data.range : 0);
   if (!Number.isFinite(range) || range <= 0) return null;
   const candidates = [];
+  const fallback = [];
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
     if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
@@ -3571,7 +3572,13 @@ function selectTarget(tower, stats) {
     const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
     if (dist <= range) {
       candidates.push({ enemy, dist });
+    } else {
+      fallback.push({ enemy, dist });
     }
+  }
+  if (candidates.length === 0 && fallback.length > 0) {
+    fallback.sort((a, b) => a.dist - b.dist);
+    return fallback[0].enemy;
   }
   if (candidates.length === 0) return null;
   let filtered = candidates;
@@ -4566,6 +4573,7 @@ function updateSpawner(dt) {
   state.spawnTimer -= dt * state.waveSpeed;
   if (state.spawnTimer <= 0 && state.enemiesToSpawn > 0) {
     spawnEnemy();
+    updateEnemyPaths();
     state.enemiesToSpawn -= 1;
     state.spawnTimer = 1.1 / state.waveSpeed;
   }
@@ -4637,17 +4645,11 @@ function drawPath() {
     if (entry.count < 2) continue;
     ctx.save();
     ctx.fillStyle = outerColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 20, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(entry.x - 20, entry.y - 20, 40, 40);
     ctx.fillStyle = midColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 12, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(entry.x - 12, entry.y - 12, 24, 24);
     ctx.fillStyle = innerColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 4, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(entry.x - 4, entry.y - 4, 8, 8);
     ctx.restore();
   }
 }
@@ -5927,7 +5929,7 @@ if (ui.upgradePanel) {
   });
 }
 
-  if (ui.upgradeTo) {
+if (ui.upgradeTo) {
   ui.upgradeTo.addEventListener("click", (event) => {
     event.stopPropagation();
     const tower = state.selectedTower;
@@ -5952,6 +5954,7 @@ if (ui.upgradePanel) {
       state.nukeCharges += 1;
     }
     updateHud();
+    updateUpgradePanel();
   });
 }
 
