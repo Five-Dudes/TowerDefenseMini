@@ -465,7 +465,7 @@ const towerTypes = {
     drillCharge: 1.5,
     drillDuration: 2.4,
     drillSlow: 0.26,
-    blocksPath: true,
+    blocksPath: false,
   },
   mine: {
     cost: 20,
