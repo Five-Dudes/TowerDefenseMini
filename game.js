@@ -3689,7 +3689,7 @@ function updateTowers(dt) {
     if (!stats) continue;
     const data = stats.data;
     if (tower.disabled) continue;
-    if (data.isMine || data.isFloorSpike || data.blocksPath) continue;
+    if (data.isMine || data.isFloorSpike || tower.type === "wall") continue;
     if (tower.type === "spikeTower") {
       updateSpikeTower(tower, dt, stats);
       continue;
