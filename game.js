@@ -227,6 +227,10 @@ const state = {
 window.state = state;
 window.getState = () => state;
 window.debugState = () => ({
+  wave: state.wave,
+  waveInProgress: state.waveInProgress,
+  paused: state.paused,
+  nukeSmoke: Boolean(state.nukeSmoke),
   towers: state.towers.map((tower) => ({
     type: tower.type,
     x: Math.round(tower.x),
@@ -252,6 +256,8 @@ window.debugTargets = () =>
     return {
       type: tower.type,
       range: stats ? Math.round(stats.range) : 0,
+      rate: stats ? stats.rate : null,
+      cooldown: tower.cooldown,
       target: target ? { type: target.type, x: Math.round(target.x), y: Math.round(target.y) } : null,
     };
   });
