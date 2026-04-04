@@ -261,6 +261,28 @@ window.debugTargets = () =>
       target: target ? { type: target.type, x: Math.round(target.x), y: Math.round(target.y) } : null,
     };
   });
+window.debugShoot = () => {
+  const tower = state.towers.find((entry) => entry.type !== "mine" && entry.type !== "floorSpike");
+  const enemy = state.enemies.find((entry) => entry.hp > 0);
+  if (!tower || !enemy) {
+    return { ok: false, reason: "missing tower or enemy" };
+  }
+  const stats = getTowerStats(tower);
+  if (!stats) {
+    return { ok: false, reason: "no stats" };
+  }
+  const before = state.projectiles.length;
+  if (tower.type === "laser") {
+    fireLaser(tower, enemy, stats, stats.range || 0);
+  } else if (tower.type === "freeze") {
+    emitFreezeGas(tower, enemy, stats);
+  } else if (tower.type === "flame") {
+    fireFlameCone(tower, enemy, stats);
+  } else if (tower.type !== "spikeTower" && tower.type !== "trap") {
+    fireProjectile(tower, enemy, stats);
+  }
+  return { ok: true, before, after: state.projectiles.length };
+};
 
 const maps = [
   {
