@@ -1226,6 +1226,20 @@ function getEnemyPosition(enemy) {
   return { x: enemy.x, y: enemy.y };
 }
 
+function ensureEnemyPath(enemy) {
+  if (!enemy) return;
+  if (Number.isFinite(enemy.x) && Number.isFinite(enemy.y)) return;
+  const paths = getActivePaths();
+  if (!paths || paths.length === 0) return;
+  const group = Number.isFinite(enemy.pathGroup) ? enemy.pathGroup : 0;
+  const pathPoints = paths[group] || paths[0];
+  if (!pathPoints || pathPoints.length === 0) return;
+  enemy.path = pathPoints;
+  enemy.pathIndex = 0;
+  enemy.x = pathPoints[0].x;
+  enemy.y = pathPoints[0].y;
+}
+
 function placeTower(type, x, y) {
   const data = towerTypes[type];
   if (!state.gameStarted) return;
@@ -3539,10 +3553,15 @@ function getEnemyProgress(enemy) {
 }
 
 function selectTarget(tower, stats) {
-  const range = stats.range;
+  const range = Number.isFinite(stats.range) ? stats.range : (stats.data && Number.isFinite(stats.data.range) ? stats.data.range : 0);
+  if (!Number.isFinite(range) || range <= 0) return null;
   const candidates = [];
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
+    if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
+      ensureEnemyPath(enemy);
+      if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) continue;
+    }
     if (enemy.stealth && !enemy.revealed && tower.type !== "watch" && tower.type !== "op" && !state.revealStealth && !stats.canHitStealth) continue;
     const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
     if (dist <= range) {
@@ -3954,6 +3973,7 @@ function updateEnemies(dt) {
   }
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0 || !enemy.deadProcessed);
   for (const enemy of state.enemies) {
+    ensureEnemyPath(enemy);
     if (enemy.slowTimer > 0) {
       enemy.slowTimer -= dt;
     }
