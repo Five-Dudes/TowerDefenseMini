@@ -3945,24 +3945,21 @@ function triggerSpikeTestExtend() {
 
 function hasEnemyInSpikeLane(tower, range) {
   const dir = tower.spikeDir || getSpikeDirection(tower);
-  const nearest = getNearestPathPoint(tower.x, tower.y);
-  if (!dir || !nearest) return false;
-  const checkPoint = nearest.point;
-  const activationRadius = grid.size * 0.6;
-  const limit = range + grid.size * 0.5;
+  if (!dir) return false;
+  const limit = range + grid.size * 0.6;
+  const backAllowance = -grid.size * 0.2;
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
     if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
       ensureEnemyPath(enemy);
     }
     if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) continue;
-    const toPoint = Math.hypot(enemy.x - checkPoint.x, enemy.y - checkPoint.y);
-    if (toPoint > activationRadius + getEnemyRadius(enemy)) continue;
     const dx = enemy.x - tower.x;
     const dy = enemy.y - tower.y;
     const forward = dx * dir.x + dy * dir.y;
-    if (forward <= 0 || forward > limit) continue;
-    return true;
+    if (forward < backAllowance || forward > limit) continue;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= limit + getEnemyRadius(enemy)) return true;
   }
   return false;
 }
