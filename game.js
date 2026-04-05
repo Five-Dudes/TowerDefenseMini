@@ -1015,6 +1015,11 @@ function updateEncyclopedia() {
       desc: "Armored, light-blue foe. Immune to heat and explosions.",
     },
     {
+      key: "aegis",
+      name: "Aegis",
+      desc: "Projects a shield that cancels area damage for nearby enemies.",
+    },
+    {
       key: "swarm",
       name: "Swarm",
       desc: "Summons a flurry of tiny, fast enemies.",
@@ -1194,6 +1199,8 @@ function spawnEnemy() {
     type = "speedy";
   } else if (roll < 0.22) {
     type = "heavy";
+  } else if (roll < 0.28 && state.wave >= 8) {
+    type = "aegis";
   } else if (roll < 0.3 && state.wave >= 4) {
     type = "stealth";
   } else if (roll < 0.36) {
@@ -1272,6 +1279,7 @@ function createEnemy(type, options = {}) {
   const isSwarmlet = type === "swarmlet";
   const isHeavy = type === "heavy" || type === "boss_pentagon" || type === "boss_hexagon";
   const isDiamond = type === "diamond" || type === "boss_diamond";
+  const isAegis = type === "aegis";
   const tier = isBoss ? 3 : Math.min(3, Math.floor((state.wave - 1) / 6) + 1);
   const tierFactor = tier === 3 ? 4 : tier === 2 ? 2 : 1;
   const baseHp = state.wave === 1 ? 20 : 22 + state.wave * 5;
@@ -1290,6 +1298,10 @@ function createEnemy(type, options = {}) {
   if (isDiamond) {
     maxHp *= 0.9;
     speed *= 0.95;
+  }
+  if (isAegis) {
+    maxHp *= 1.2;
+    speed *= 0.9;
   }
   if (isSwarmlet) {
     maxHp *= 0.2;
@@ -1343,6 +1355,8 @@ function createEnemy(type, options = {}) {
     pathOffset,
     pathGroup,
     castleDamage: baseCastleDamage,
+    umbrellaRadius: isAegis ? grid.size * 2 : 0,
+    umbrellaShielded: false,
   };
   if (enemy.armored) {
     enemy.armorHits = 0;
@@ -4395,6 +4409,23 @@ function updateSpikeTowers(dt) {
 
 function updateEnemies(dt) {
   for (const enemy of state.enemies) {
+    enemy.umbrellaShielded = false;
+  }
+  const umbrellas = state.enemies.filter((enemy) => enemy.type === "aegis" && enemy.hp > 0);
+  if (umbrellas.length > 0) {
+    for (const enemy of state.enemies) {
+      if (enemy.hp <= 0) continue;
+      for (const umbrella of umbrellas) {
+        const radius = umbrella.umbrellaRadius || grid.size * 2;
+        const dist = Math.hypot(enemy.x - umbrella.x, enemy.y - umbrella.y);
+        if (dist <= radius) {
+          enemy.umbrellaShielded = true;
+          break;
+        }
+      }
+    }
+  }
+  for (const enemy of state.enemies) {
     if (enemy.hp <= 0) {
       handleEnemyDeath(enemy);
     }
@@ -4702,6 +4733,7 @@ function applyDamage(enemy, amount) {
 }
 
 function applyExplosionDamage(enemy, amount) {
+  if (enemy.umbrellaShielded) return;
   if (enemy.immuneExplosion) return;
   const scaled = enemy.explosionVulnerable ? amount * 2 : amount;
   applyDamage(enemy, scaled);
@@ -5777,6 +5809,8 @@ function drawEnemies() {
             ? "#e0f2fe"
             : enemy.type === "labrat"
               ? "#fbbf24"
+              : enemy.type === "aegis"
+                ? "#60a5fa"
               : isBoss
                 ? "#f43f5e"
                 : enemy.type === "swarmlet"
@@ -5804,6 +5838,8 @@ function drawEnemies() {
       drawOctagon(pos.x, pos.y, radius, baseColor);
     } else if (enemy.type === "diamond" || enemy.type === "boss_diamond") {
       drawDiamond(pos.x, pos.y, radius, baseColor);
+    } else if (enemy.type === "aegis") {
+      drawHexagon(pos.x, pos.y, radius, baseColor);
     } else {
       drawSphere(pos.x, pos.y, radius, baseColor);
     }
@@ -5855,6 +5891,22 @@ function drawEnemies() {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (enemy.umbrellaShielded) {
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (enemy.type === "aegis") {
+      ctx.strokeStyle = "rgba(59, 130, 246, 0.85)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, (enemy.umbrellaRadius || grid.size * 2), 0, Math.PI * 2);
       ctx.stroke();
     }
 
