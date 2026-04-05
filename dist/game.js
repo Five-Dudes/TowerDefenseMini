@@ -387,6 +387,35 @@ const maps = [
       ],
     ],
   },
+  {
+    id: "yfork",
+    name: "Y Fork",
+    desc: "Two branches merge into one path.",
+    palette: {
+      top: "#0f2434",
+      mid: "#0c1b2a",
+      bottom: "#070f1b",
+      shadow: "rgba(3, 8, 14, 0.35)",
+    },
+    paths: [
+      [
+        { x: 40, y: 110 },
+        { x: 260, y: 110 },
+        { x: 360, y: 220 },
+        { x: 540, y: 220 },
+        { x: 660, y: 320 },
+        { x: 900, y: 320 },
+      ],
+      [
+        { x: 40, y: 430 },
+        { x: 260, y: 430 },
+        { x: 360, y: 220 },
+        { x: 540, y: 220 },
+        { x: 660, y: 320 },
+        { x: 900, y: 320 },
+      ],
+    ],
+  },
 ];
 
 const grid = {
@@ -4984,6 +5013,7 @@ function drawPath() {
     if (!points || points.length < 2) continue;
     ctx.save();
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
     ctx.strokeStyle = outerColor;
     ctx.lineWidth = 40;
@@ -5014,23 +5044,7 @@ function drawPath() {
 
     ctx.restore();
   }
-  for (const entry of junctions.values()) {
-    if (entry.count < 2) continue;
-    ctx.save();
-    ctx.fillStyle = outerColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 20, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = midColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = innerColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
+  void junctions;
 }
 
 function drawPortalAt(origin, t) {
@@ -6109,6 +6123,11 @@ function update(dt) {
   for (const tower of state.towers) {
     if (tower.type === "spikeTower") {
       forceSpikeExtend(tower);
+      if (tower.spikePhase === "extend" && (tower.spikeProgress || 0) <= 0) {
+        const stats = getTowerStats(tower);
+        const extendSpeed = (stats && stats.spikeExtendSpeed) || towerTypes.spikeTower.spikeExtendSpeed || 6;
+        tower.spikeProgress = Math.min(1, (tower.spikeProgress || 0) + extendSpeed * simDt * 0.2);
+      }
     }
   }
   updateTraps(simDt);
