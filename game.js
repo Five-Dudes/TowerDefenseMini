@@ -1943,12 +1943,11 @@ function getTowerStats(tower) {
     if (tower.type === "spikeTower") {
       const tier = Math.min(level, 5);
       const path = tower.upgradePath || 1;
-      const nearest = getNearestPathPoint(tower.x, tower.y);
       spikeDamage = data.damage;
-      spikeRange = nearest ? nearest.dist + grid.size : grid.size * 2;
+      spikeRange = grid.size * 3;
       spikeExtendSpeed = data.spikeExtendSpeed;
       spikeRetractSpeed = data.spikeRetractSpeed;
-      spikeHold = 1;
+      spikeHold = data.spikeHold;
       spikeSlow = 0;
       spikeSlowDuration = 1.2;
       spikeCount = 1;
@@ -3921,36 +3920,11 @@ function updateTrapSetters(dt) {
   }
 }
 
-function hasEnemyInSpikeLane(tower, dir, range) {
-  if (!dir) return false;
-  for (const enemy of state.enemies) {
-    if (enemy.hp <= 0) continue;
-    if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
-      ensureEnemyPath(enemy);
-    }
-    if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) continue;
-    if (isOnPath(enemy.x, enemy.y)) {
-      return true;
-    }
-    const dx = enemy.x - tower.x;
-    const dy = enemy.y - tower.y;
-    const forward = dx * dir.x + dy * dir.y;
-    if (forward <= 0 || forward > range + 8) continue;
-    const side = Math.abs(dir.x ? dy : dx);
-    if (side <= 28) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function forceSpikeExtend(tower) {
   if (!tower || tower.type !== "spikeTower") return;
   if (tower.spikePhase && tower.spikePhase !== "idle") return;
+  if (state.enemies.length === 0) return;
   const dir = tower.spikeDir || getSpikeDirection(tower);
-  const stats = getTowerStats(tower);
-  const range = (stats && stats.spikeRange) || towerTypes.spikeTower.spikeRange || 32;
-  if (!hasEnemyInSpikeLane(tower, dir, range)) return;
   if (!dir) return;
   tower.spikeDir = dir;
   tower.spikePhase = "extend";
@@ -3964,7 +3938,7 @@ function forceSpikeExtend(tower) {
 function updateSpikeTower(tower, dt, stats) {
   const data = stats ? stats.data : towerTypes.spikeTower;
   const maxLen = (stats && stats.spikeRange) || data.spikeRange || 32;
-  const shouldExtend = hasEnemyInSpikeLane(tower, tower.spikeDir || getSpikeDirection(tower), maxLen);
+  const shouldExtend = hasEnemyInRange(tower, maxLen);
   const baseDir = getSpikeDirection(tower);
   if (baseDir) {
     tower.spikeDir = baseDir;
@@ -5496,10 +5470,6 @@ function drawTowers() {
       if (dir) {
         const stats = getTowerStats(tower);
         const maxLen = (stats && stats.spikeRange) || data.spikeRange || 32;
-        if (!hasEnemyInSpikeLane(tower, dir, maxLen)) {
-          ctx.restore();
-          continue;
-        }
         const rawProgress = tower.spikeProgress || 0;
         const progress = rawProgress > 0 ? Math.max(rawProgress, 0.12) : 0;
         const len = maxLen * progress;
