@@ -1600,6 +1600,7 @@ function getTowerStats(tower) {
   let globalPoisonDps = 0;
   let globalPoisonDuration = 0;
   let spikeRange = data.spikeRange;
+  let spikeHitRange = data.spikeRange;
   let spikeExtendSpeed = data.spikeExtendSpeed;
   let spikeRetractSpeed = data.spikeRetractSpeed;
   let spikeHold = data.spikeHold;
@@ -1944,7 +1945,8 @@ function getTowerStats(tower) {
       const tier = Math.min(level, 5);
       const path = tower.upgradePath || 1;
       spikeDamage = data.damage;
-      spikeRange = grid.size * 4;
+      spikeRange = grid.size * 5;
+      spikeHitRange = grid.size * 7;
       spikeExtendSpeed = data.spikeExtendSpeed;
       spikeRetractSpeed = data.spikeRetractSpeed;
       spikeHold = data.spikeHold;
@@ -2167,6 +2169,7 @@ function getTowerStats(tower) {
     globalPoisonDps,
     globalPoisonDuration,
     spikeRange,
+    spikeHitRange,
     spikeExtendSpeed,
     spikeRetractSpeed,
     spikeHold,
@@ -3937,7 +3940,7 @@ function forceSpikeExtend(tower) {
 
 function updateSpikeTower(tower, dt, stats) {
   const data = stats ? stats.data : towerTypes.spikeTower;
-  const maxLen = (stats && stats.spikeRange) || data.spikeRange || 32;
+  const maxLen = (stats && stats.spikeHitRange) || (stats && stats.spikeRange) || data.spikeRange || 32;
   const shouldExtend = hasEnemyInRange(tower, maxLen);
   const baseDir = getSpikeDirection(tower);
   if (baseDir) {
@@ -4339,7 +4342,11 @@ function isBlockedBySpike(enemy) {
     const dir = tower.spikeDir || getSpikeDirection(tower);
     if (!dir) continue;
     const stats = getTowerStats(tower);
-    const range = (stats && stats.spikeRange) || (stats && stats.data && stats.data.spikeRange) || towerTypes.spikeTower.spikeRange || 32;
+    const range = (stats && stats.spikeHitRange)
+      || (stats && stats.spikeRange)
+      || (stats && stats.data && stats.data.spikeRange)
+      || towerTypes.spikeTower.spikeRange
+      || 32;
     const len = range * Math.min(1, Math.max(0, progress));
     const dx = enemy.x - tower.x;
     const dy = enemy.y - tower.y;
