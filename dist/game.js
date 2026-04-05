@@ -535,8 +535,8 @@ const towerTypes = {
     slow: 0,
     spikeRange: 120,
     spikeExtendSpeed: 8,
-    spikeRetractSpeed: 2.4,
-    spikeHold: 0.8,
+    spikeRetractSpeed: 1,
+    spikeHold: 0.6,
     allowOnPath: false,
     spikeDamage: 10,
     spikeSlow: 0.14,
@@ -1326,6 +1326,13 @@ function createEnemy(type, options = {}) {
 
 function getEnemyPosition(enemy) {
   return { x: enemy.x, y: enemy.y };
+}
+
+function getEnemyRadius(enemy) {
+  const tierScale = 1 + ((enemy.tier || 1) - 1) * 0.18;
+  const isBoss = enemy.isBoss || isBossType(enemy.type);
+  const baseRadius = enemy.type === "swarmlet" ? 6 : isBoss ? 22 : enemy.type === "heavy" ? 16 : 12;
+  return baseRadius * tierScale;
 }
 
 function ensureEnemyPath(enemy) {
@@ -4234,6 +4241,29 @@ function updateFloorSpikes(dt) {
   }
 }
 
+function isBlockedBySpike(enemy) {
+  const radius = getEnemyRadius(enemy);
+  for (const tower of state.towers) {
+    if (tower.type !== "spikeTower") continue;
+    const progress = tower.spikeProgress || 0;
+    if (progress <= 0) continue;
+    const dir = tower.spikeDir || getSpikeDirection(tower);
+    if (!dir) continue;
+    const stats = getTowerStats(tower);
+    const range = (stats && stats.spikeRange) || (stats && stats.data && stats.data.spikeRange) || towerTypes.spikeTower.spikeRange || 32;
+    const len = range * Math.min(1, Math.max(0, progress));
+    const dx = enemy.x - tower.x;
+    const dy = enemy.y - tower.y;
+    const forward = dx * dir.x + dy * dir.y;
+    if (forward <= 0 || forward > len + radius) continue;
+    const side = Math.abs(dir.x ? dy : dx);
+    if (side <= 12 + radius * 0.5) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function updateEnemies(dt) {
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) {
@@ -4296,6 +4326,10 @@ function updateEnemies(dt) {
       if (enemy.stunTimer > 0) {
         continue;
       }
+    }
+    if (isBlockedBySpike(enemy)) {
+      enemy.stunTimer = Math.max(enemy.stunTimer || 0, 0.05);
+      continue;
     }
     const slowFactor = enemy.slowTimer > 0 ? enemy.slowFactor || 0 : 0;
     const speed = enemy.speed * (1 - slowFactor);
