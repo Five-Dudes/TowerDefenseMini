@@ -114,8 +114,6 @@ const ui = {
   spawnEnemyDarkMatter: document.getElementById("spawn-enemy-darkmatter"),
   spawnEnemyOnFlame: document.getElementById("spawn-enemy-onflame"),
   spawnEnemyPoisoned: document.getElementById("spawn-enemy-poisoned"),
-  upgradeAllBy: document.getElementById("upgrade-all-by"),
-  upgradeAllByValue: document.getElementById("upgrade-all-by-value"),
   gameOver: document.getElementById("game-over"),
   sixSevenOverlay: document.getElementById("sixseven-overlay"),
   sixSevenGif: document.getElementById("sixseven-gif"),
@@ -1022,6 +1020,56 @@ function updateEncyclopedia() {
       desc: "Floats over mines and traps. Slower, less durable.",
     },
     {
+      key: "thief",
+      name: "Pickpocket",
+      desc: "Steals gold every few seconds.",
+    },
+    {
+      key: "troll",
+      name: "Backstepper",
+      desc: "Occasionally moves backward to dodge slow shots.",
+    },
+    {
+      key: "buffer",
+      name: "Totemist",
+      desc: "Heals and buffs nearby enemies.",
+    },
+    {
+      key: "saboteur",
+      name: "Saboteur",
+      desc: "Disables traps and stuns towers briefly.",
+    },
+    {
+      key: "chimera",
+      name: "Chimera",
+      desc: "Late-game menace with many traits that splits on death.",
+    },
+    {
+      key: "thief",
+      name: "Pickpocket",
+      desc: "Steals gold every few seconds.",
+    },
+    {
+      key: "troll",
+      name: "Backstepper",
+      desc: "Occasionally moves backward to dodge slow shots.",
+    },
+    {
+      key: "buffer",
+      name: "Totemist",
+      desc: "Heals and buffs nearby enemies.",
+    },
+    {
+      key: "saboteur",
+      name: "Saboteur",
+      desc: "Disables traps and stuns towers briefly.",
+    },
+    {
+      key: "chimera",
+      name: "Chimera",
+      desc: "Late-game menace with many traits that splits on death.",
+    },
+    {
       key: "aegis",
       name: "Aegis",
       desc: "Projects a shield that cancels area damage for nearby enemies.",
@@ -1104,6 +1152,21 @@ function getEnemyIcon(type) {
   }
   if (type === "flying") {
     return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="30,18 12,26 12,10" fill="#38bdf8" stroke="#0f172a" stroke-width="2"/><line x1="6" y1="18" x2="12" y2="18" stroke="#e2e8f0" stroke-width="2"/><line x1="24" y1="18" x2="30" y2="18" stroke="#e2e8f0" stroke-width="2"/></svg>`;
+  }
+  if (type === "thief") {
+    return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="30,18 12,26 12,10" fill="#f59e0b" stroke="#0f172a" stroke-width="2"/><circle cx="${center}" cy="${center}" r="6" fill="none" stroke="#fbbf24" stroke-width="2"/></svg>`;
+  }
+  if (type === "troll") {
+    return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,5 29,13 25,27 11,27 7,13" fill="#f472b6" stroke="#0f172a" stroke-width="2"/></svg>`;
+  }
+  if (type === "buffer") {
+    return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,4 30,10 32,18 30,26 18,32 6,26 4,18 6,10" fill="#22c55e" stroke="#0f172a" stroke-width="2"/><circle cx="${center}" cy="${center}" r="10" fill="none" stroke="rgba(16,185,129,0.8)" stroke-width="2"/></svg>`;
+  }
+  if (type === "saboteur") {
+    return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,4 28,8 32,18 28,28 18,32 8,28 4,18 8,8" fill="#ef4444" stroke="#0f172a" stroke-width="2"/></svg>`;
+  }
+  if (type === "chimera") {
+    return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,4 30,10 32,18 30,26 18,32 6,26 4,18 6,10" fill="#c084fc" stroke="#0f172a" stroke-width="2"/><circle cx="${center}" cy="${center}" r="13" fill="none" stroke="rgba(168,85,247,0.8)" stroke-width="2"/></svg>`;
   }
   if (type === "diamond") {
     return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,3 33,18 18,33 3,18" fill="#e0f2fe" stroke="#0f172a" stroke-width="2"/></svg>`;
@@ -1208,22 +1271,32 @@ function spawnEnemy() {
     const bossIndex = Math.max(0, Math.floor(state.wave / 10) - 1);
     const bossTypes = ["boss_fast", "boss_pentagon", "boss_hexagon", "boss_diamond"];
     type = bossTypes[bossIndex % bossTypes.length];
-  } else if (roll < 0.12) {
+  } else if (roll < 0.1) {
     type = "speedy";
-  } else if (roll < 0.22) {
+  } else if (roll < 0.2) {
     type = "heavy";
   } else if (roll < 0.26 && state.wave >= 6) {
     type = "flying";
   } else if (roll < 0.3 && state.wave >= 8) {
     type = "aegis";
-  } else if (roll < 0.32 && state.wave >= 4) {
+  } else if (roll < 0.33 && state.wave >= 7) {
+    type = "troll";
+  } else if (roll < 0.36 && state.wave >= 8) {
+    type = "thief";
+  } else if (roll < 0.39 && state.wave >= 10) {
+    type = "buffer";
+  } else if (roll < 0.42 && state.wave >= 12) {
+    type = "saboteur";
+  } else if (roll < 0.44 && state.wave >= 4) {
     type = "stealth";
-  } else if (roll < 0.38) {
+  } else if (roll < 0.48) {
     type = "labrat";
-  } else if (roll < 0.44 && state.wave >= 15) {
+  } else if (roll < 0.54 && state.wave >= 15) {
     type = "diamond";
-  } else if (roll < 0.5 && state.wave >= 10) {
+  } else if (roll < 0.6 && state.wave >= 10) {
     type = "swarm";
+  } else if (roll < 0.63 && state.wave >= 25) {
+    type = "chimera";
   }
   let armored = false;
   let darkMatter = false;
@@ -1234,9 +1307,6 @@ function spawnEnemy() {
   if (allowArmored && Math.random() < 0.18) armored = true;
   if (allowDarkMatter && Math.random() < 0.15) darkMatter = true;
   if (allowStealthRoll && Math.random() < 0.18) stealth = true;
-  if (armored && darkMatter) {
-    darkMatter = false;
-  }
   if (type === "diamond" || type === "boss_diamond") {
     armored = true;
     darkMatter = false;
@@ -1299,6 +1369,11 @@ function createEnemy(type, options = {}) {
   const isDiamond = type === "diamond" || type === "boss_diamond";
   const isAegis = type === "aegis";
   const isFlying = type === "flying";
+  const isThief = type === "thief";
+  const isTroll = type === "troll";
+  const isBuffer = type === "buffer";
+  const isSaboteur = type === "saboteur";
+  const isChimera = type === "chimera";
   const tier = isBoss ? 3 : Math.min(3, Math.floor((state.wave - 1) / 6) + 1);
   const tierFactor = tier === 3 ? 4 : tier === 2 ? 2 : 1;
   const baseHp = state.wave === 1 ? 20 : 22 + state.wave * 5;
@@ -1326,6 +1401,26 @@ function createEnemy(type, options = {}) {
     maxHp *= 0.7;
     speed *= 0.85;
   }
+  if (isThief) {
+    maxHp *= 0.65;
+    speed *= 1.05;
+  }
+  if (isTroll) {
+    maxHp *= 0.75;
+    speed *= 0.95;
+  }
+  if (isBuffer) {
+    maxHp *= 1.05;
+    speed *= 0.85;
+  }
+  if (isSaboteur) {
+    maxHp *= 0.9;
+    speed *= 0.95;
+  }
+  if (isChimera) {
+    maxHp *= 2.2;
+    speed *= 0.85;
+  }
   if (isSwarmlet) {
     maxHp *= 0.2;
     speed *= 1.15;
@@ -1345,7 +1440,7 @@ function createEnemy(type, options = {}) {
     : null;
   const isStealth = coalesce(options.stealth, type === "stealth");
   const baseCastleDamage = type === "swarm" || type === "swarmlet" ? 8 : 5;
-  const armoredFlag = options.armored || isDiamond || false;
+  const armoredFlag = options.armored || isDiamond || isChimera || false;
   const darkMatterFlag = !armoredFlag && !isDiamond && (options.darkMatter || false);
   const enemy = {
     x: start.x + (pathOffset ? pathOffset.x : 0),
@@ -1369,20 +1464,32 @@ function createEnemy(type, options = {}) {
     tierFactor,
     isBoss,
     facing: 0,
-    stealth: isStealth,
-    revealed: !isStealth,
-    radioactive,
+    stealth: isStealth || isChimera,
+    revealed: !(isStealth || isChimera),
+    radioactive: isChimera ? true : radioactive,
     revealTimer: 0,
-    nukeImmune: type === "labrat" || (isDiamond && tier >= 3),
-    immuneHeat: isDiamond,
-    immuneExplosion: isDiamond,
+    nukeImmune: type === "labrat" || (isDiamond && tier >= 3) || isChimera,
+    immuneHeat: isDiamond || isChimera,
+    immuneExplosion: isDiamond || isChimera,
     explosionVulnerable: type === "swarmlet",
     pathOffset,
     pathGroup,
     castleDamage: baseCastleDamage,
     umbrellaRadius: isAegis ? grid.size * 2 : 0,
     umbrellaShielded: false,
-    flying: isFlying,
+    flying: isFlying || isChimera,
+    thief: isThief,
+    stealTimer: isThief ? 2 : 0,
+    troll: isTroll,
+    backtrackTimer: 0,
+    backtrackCooldown: isTroll ? 1.5 : 0,
+    buffer: isBuffer,
+    buffRadius: isBuffer ? grid.size * 2.4 : 0,
+    buffed: false,
+    healRate: isBuffer ? 6 : 0,
+    saboteur: isSaboteur,
+    sabotageTimer: isSaboteur ? 1.8 : 0,
+    chimera: isChimera,
   };
   if (enemy.armored) {
     enemy.armorHits = 0;
@@ -1532,33 +1639,28 @@ function getUpgradeBaseCost(tower) {
 function getUpgradeCost(tower) {
   const baseCost = getUpgradeBaseCost(tower);
   const level = tower.level || 1;
-  return Math.round(baseCost * Math.pow(1.8, Math.max(0, level - 1)));
+  let cost = Math.round(baseCost * Math.pow(1.8, Math.max(0, level - 1)));
+  if (level >= 4) {
+    cost = Math.round(cost * 50);
+  } else if (level >= 3) {
+    cost = Math.round(cost * 8);
+  }
+  return cost;
 }
 
 function getUpgradeCostToLevel(currentLevel, targetLevel, tower) {
   const baseCost = tower ? getUpgradeBaseCost(tower) : 50;
   let total = 0;
   for (let level = currentLevel; level < targetLevel; level += 1) {
-    total += Math.round(baseCost * Math.pow(1.8, Math.max(0, level - 1)));
+    let cost = Math.round(baseCost * Math.pow(1.8, Math.max(0, level - 1)));
+    if (level >= 4) {
+      cost = Math.round(cost * 50);
+    } else if (level >= 3) {
+      cost = Math.round(cost * 8);
+    }
+    total += cost;
   }
   return Math.round(total);
-}
-
-function upgradeTowerFree(tower, amount) {
-  if (!tower || tower.type === "wall" || tower.type === "mine") return;
-  const cap = state.towerLevelCap || 5;
-  const current = tower.level || 1;
-  const next = Math.min(cap, Math.max(1, current + amount));
-  if (next <= current) return;
-  tower.level = next;
-  if (tower.type === "bomb" && tower.level >= 5 && !tower.bombNukeGranted) {
-    tower.bombNukeGranted = true;
-    state.nukeCharges += 1;
-  }
-  if (tower.type === "drone") {
-    const stats = getTowerStats(tower);
-    if (stats) ensureDroneMinis(tower, stats);
-  }
 }
 
 function upgradeTower(tower) {
@@ -3506,6 +3608,11 @@ function updateTraps(dt) {
     }
   };
   for (const trap of state.traps) {
+    if (trap.disabledTimer > 0) {
+      trap.disabledTimer = Math.max(0, trap.disabledTimer - dt);
+      remaining.push(trap);
+      continue;
+    }
     if (trap.launch) {
       trap.launch.t += dt;
       const p = Math.min(1, trap.launch.t / trap.launch.duration);
@@ -4273,6 +4380,11 @@ function ensureDroneMinis(tower, stats) {
 
 function updateTowers(dt) {
   updateTowerMovement(dt);
+  for (const tower of state.towers) {
+    if (tower.stunTimer > 0) {
+      tower.stunTimer = Math.max(0, tower.stunTimer - dt);
+    }
+  }
   if (state.nukeSmoke) {
     return;
   }
@@ -4283,7 +4395,7 @@ function updateTowers(dt) {
     const stats = getTowerStats(tower);
     if (!stats) continue;
     const data = stats.data;
-    if (tower.disabled) continue;
+    if (tower.disabled || tower.stunTimer > 0) continue;
     if (data.isMine || data.isFloorSpike || data.blocksPath) continue;
     if (tower.type === "spikeTower") continue;
     if (tower.type === "drone" && stats.droneBombRate > 0) {
@@ -4389,7 +4501,7 @@ function updateTowers(dt) {
 function updateSpikeTowers(dt) {
   for (const tower of state.towers) {
     if (tower.type !== "spikeTower") continue;
-    if (tower.disabled) continue;
+    if (tower.disabled || tower.stunTimer > 0) continue;
     const stats = getTowerStats(tower);
     if (!stats) continue;
     updateSpikeTower(tower, dt, stats);
@@ -4495,6 +4607,7 @@ function isBlockedBySpike(enemy) {
 function updateEnemies(dt) {
   for (const enemy of state.enemies) {
     enemy.umbrellaShielded = false;
+    enemy.buffed = false;
   }
   const umbrellas = state.enemies.filter((enemy) => enemy.type === "aegis" && enemy.hp > 0);
   if (umbrellas.length > 0) {
@@ -4510,6 +4623,23 @@ function updateEnemies(dt) {
       }
     }
   }
+  const buffers = state.enemies.filter((enemy) => enemy.buffer && enemy.hp > 0);
+  if (buffers.length > 0) {
+    for (const enemy of state.enemies) {
+      if (enemy.hp <= 0) continue;
+      for (const buffer of buffers) {
+        const radius = buffer.buffRadius || grid.size * 2.4;
+        const dist = Math.hypot(enemy.x - buffer.x, enemy.y - buffer.y);
+        if (dist <= radius) {
+          enemy.buffed = true;
+          if (enemy.hp < enemy.maxHp) {
+            enemy.hp = Math.min(enemy.maxHp, enemy.hp + (buffer.healRate || 0) * dt);
+          }
+          break;
+        }
+      }
+    }
+  }
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) {
       handleEnemyDeath(enemy);
@@ -4518,6 +4648,46 @@ function updateEnemies(dt) {
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0 || !enemy.deadProcessed);
   for (const enemy of state.enemies) {
     ensureEnemyPath(enemy);
+    if (enemy.thief) {
+      enemy.stealTimer = Math.max(0, (enemy.stealTimer || 0) - dt);
+      if (enemy.stealTimer <= 0) {
+        const stolen = 2 + Math.floor(Math.random() * 9);
+        state.gold = Math.max(0, state.gold - stolen);
+        enemy.stealTimer = 2;
+      }
+    }
+    if (enemy.saboteur) {
+      enemy.sabotageTimer = Math.max(0, (enemy.sabotageTimer || 0) - dt);
+      if (enemy.sabotageTimer <= 0) {
+        const radius = grid.size * 2;
+        let closest = null;
+        let best = Infinity;
+        for (const trap of state.traps) {
+          const dist = Math.hypot(trap.x - enemy.x, trap.y - enemy.y);
+          if (dist <= radius && dist < best) {
+            closest = trap;
+            best = dist;
+          }
+        }
+        if (closest) {
+          closest.disabledTimer = Math.max(closest.disabledTimer || 0, 3);
+        }
+        let towerTarget = null;
+        let towerBest = Infinity;
+        for (const tower of state.towers) {
+          if (tower.type === "wall" || tower.type === "mine") continue;
+          const dist = Math.hypot(tower.x - enemy.x, tower.y - enemy.y);
+          if (dist <= radius && dist < towerBest) {
+            towerTarget = tower;
+            towerBest = dist;
+          }
+        }
+        if (towerTarget) {
+          towerTarget.stunTimer = Math.max(towerTarget.stunTimer || 0, 1.5);
+        }
+        enemy.sabotageTimer = 2.2;
+      }
+    }
     if (enemy.slowTimer > 0) {
       enemy.slowTimer -= dt;
     }
@@ -4580,7 +4750,20 @@ function updateEnemies(dt) {
     const speed = enemy.speed * (1 - slowFactor);
     const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : (getActivePaths()[0] || []);
     if (!pathPoints || pathPoints.length < 2) continue;
-    const nextIndex = Math.min(enemy.pathIndex + 1, pathPoints.length - 1);
+    if (enemy.troll) {
+      enemy.backtrackCooldown = Math.max(0, (enemy.backtrackCooldown || 0) - dt);
+      if (enemy.backtrackCooldown <= 0 && Math.random() < 0.08) {
+        enemy.backtrackTimer = 0.6;
+        enemy.backtrackCooldown = 2.2;
+      }
+    }
+    const backtracking = enemy.backtrackTimer > 0 && enemy.pathIndex > 0;
+    if (enemy.backtrackTimer > 0) {
+      enemy.backtrackTimer = Math.max(0, enemy.backtrackTimer - dt);
+    }
+    const nextIndex = backtracking
+      ? Math.max(enemy.pathIndex - 1, 0)
+      : Math.min(enemy.pathIndex + 1, pathPoints.length - 1);
     const target = pathPoints[nextIndex];
     const offset = enemy.pathOffset || { x: 0, y: 0 };
     const targetX = target.x + offset.x;
@@ -4810,7 +4993,8 @@ function applyNukeDamage(x, y, radius) {
 function applyDamage(enemy, amount) {
   const multiplier = enemy.embrittleTimer > 0 ? (enemy.embrittleMultiplier || 1) : 1;
   if (enemy.hp <= 0) return;
-  const scaled = amount * multiplier;
+  const buffMult = enemy.buffed ? 0.7 : 1;
+  const scaled = amount * multiplier * buffMult;
   const applied = Math.max(0, Math.min(enemy.hp, scaled));
   state.totalDamage += applied;
   enemy.hp -= scaled;
@@ -4896,6 +5080,38 @@ function handleEnemyDeath(enemy) {
       immuneHeat: false,
       immuneExplosion: false,
       explosionVulnerable: dropType === "speedy" ? true : false,
+    });
+  } else if (enemy.type === "chimera") {
+    const childTier = Math.max(1, enemy.tier - 1);
+    spawnSplitEnemy(enemy, childTier, {
+      type: "flying",
+      armored: false,
+      darkMatter: false,
+      stealth: true,
+      revealed: false,
+      immuneHeat: false,
+      immuneExplosion: false,
+      explosionVulnerable: false,
+    });
+    spawnSplitEnemy(enemy, childTier, {
+      type: "flying",
+      armored: true,
+      darkMatter: false,
+      stealth: false,
+      revealed: true,
+      immuneHeat: false,
+      immuneExplosion: false,
+      explosionVulnerable: false,
+    });
+    spawnSplitEnemy(enemy, childTier, {
+      type: "flying",
+      armored: false,
+      darkMatter: false,
+      stealth: false,
+      revealed: true,
+      immuneHeat: false,
+      immuneExplosion: false,
+      explosionVulnerable: false,
     });
   } else if (enemy.tier > 1 && !enemy.isBoss) {
     const nextTier = enemy.tier - 1;
@@ -5896,6 +6112,16 @@ function drawEnemies() {
             ? "#e0f2fe"
             : enemy.type === "labrat"
               ? "#fbbf24"
+              : enemy.type === "thief"
+                ? "#f59e0b"
+                : enemy.type === "troll"
+                  ? "#f472b6"
+                  : enemy.type === "buffer"
+                    ? "#22c55e"
+                    : enemy.type === "saboteur"
+                      ? "#ef4444"
+                      : enemy.type === "chimera"
+                        ? "#c084fc"
               : enemy.type === "flying"
                 ? "#38bdf8"
               : enemy.type === "aegis"
@@ -5935,10 +6161,25 @@ function drawEnemies() {
       ctx.moveTo(pos.x + radius * 0.2, pos.y);
       ctx.lineTo(pos.x + radius * 0.9, pos.y);
       ctx.stroke();
+    } else if (enemy.type === "thief") {
+      drawTriangle(pos.x, pos.y, radius * 0.85, enemy.facing, baseColor);
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.85)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (enemy.type === "troll") {
+      drawPentagon(pos.x, pos.y, radius * 0.9, baseColor);
+    } else if (enemy.type === "buffer") {
+      drawHexagon(pos.x, pos.y, radius, baseColor);
+    } else if (enemy.type === "saboteur") {
+      drawOctagon(pos.x, pos.y, radius * 0.9, baseColor);
     } else if (enemy.type === "diamond" || enemy.type === "boss_diamond") {
       drawDiamond(pos.x, pos.y, radius, baseColor);
     } else if (enemy.type === "aegis") {
       drawHexagon(pos.x, pos.y, radius, baseColor);
+    } else if (enemy.type === "chimera") {
+      drawHexagon(pos.x, pos.y, radius * 1.1, baseColor);
     } else {
       drawSphere(pos.x, pos.y, radius, baseColor);
     }
@@ -6006,6 +6247,14 @@ function drawEnemies() {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, (enemy.umbrellaRadius || grid.size * 2), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (enemy.buffer) {
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, (enemy.buffRadius || grid.size * 2.4), 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -6982,15 +7231,11 @@ if (ui.jasperModal) {
       const type = (ui.spawnEnemyType ? ui.spawnEnemyType.value : undefined) || "grunt";
       const count = Math.max(1, Number.parseInt((ui.spawnEnemyCount ? ui.spawnEnemyCount.value : undefined) || "1", 10));
       const radioactive = Boolean(ui.spawnEnemyRadioactive ? ui.spawnEnemyRadioactive.checked : undefined);
-      let armored = Boolean(ui.spawnEnemyArmored ? ui.spawnEnemyArmored.checked : undefined);
-      let darkMatter = Boolean(ui.spawnEnemyDarkMatter ? ui.spawnEnemyDarkMatter.checked : undefined);
+      const armored = Boolean(ui.spawnEnemyArmored ? ui.spawnEnemyArmored.checked : undefined);
+      const darkMatter = Boolean(ui.spawnEnemyDarkMatter ? ui.spawnEnemyDarkMatter.checked : undefined);
       const onFlame = Boolean(ui.spawnEnemyOnFlame ? ui.spawnEnemyOnFlame.checked : undefined);
       const poisoned = Boolean(ui.spawnEnemyPoisoned ? ui.spawnEnemyPoisoned.checked : undefined);
       const stealth = type === "stealth";
-      if (armored && darkMatter) {
-        darkMatter = false;
-        if (ui.spawnEnemyDarkMatter) ui.spawnEnemyDarkMatter.checked = false;
-      }
       for (let i = 0; i < count; i += 1) {
         if (type === "swarm") {
           registerEnemyInEncyclopedia(type, armored, darkMatter);
@@ -7002,19 +7247,6 @@ if (ui.jasperModal) {
         registerEnemyInEncyclopedia(type, armored, darkMatter, stealth);
         state.enemies.push(createEnemy(type, { armored, darkMatter, onFlame, poisoned, radioactive, stealth }));
       }
-    });
-  }
-
-  if (ui.upgradeAllBy) {
-    ui.upgradeAllBy.addEventListener("click", () => {
-      if (!state.infiniteGold) return;
-      const raw = ui.upgradeAllByValue ? ui.upgradeAllByValue.value : "1";
-      const amount = Math.max(1, Number.parseInt(raw || "1", 10));
-      for (const tower of state.towers) {
-        upgradeTowerFree(tower, amount);
-      }
-      updateHud();
-      updateUpgradePanel();
     });
   }
 
