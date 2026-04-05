@@ -3931,19 +3931,21 @@ function hasEnemyInSpikeLane(tower, range) {
   const dir = tower.spikeDir || getSpikeDirection(tower);
   const nearest = getNearestPathPoint(tower.x, tower.y);
   if (!dir || !nearest) return false;
-  const activationRadius = grid.size * 0.8;
+  const checkPoint = nearest.point;
+  const activationRadius = grid.size * 0.6;
+  const limit = range + grid.size * 0.5;
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
     if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
       ensureEnemyPath(enemy);
     }
     if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) continue;
-    const toPoint = Math.hypot(enemy.x - nearest.point.x, enemy.y - nearest.point.y);
+    const toPoint = Math.hypot(enemy.x - checkPoint.x, enemy.y - checkPoint.y);
     if (toPoint > activationRadius + getEnemyRadius(enemy)) continue;
     const dx = enemy.x - tower.x;
     const dy = enemy.y - tower.y;
     const forward = dx * dir.x + dy * dir.y;
-    if (forward <= 0 || forward > range + grid.size * 0.6) continue;
+    if (forward <= 0 || forward > limit) continue;
     return true;
   }
   return false;
@@ -3993,9 +3995,10 @@ function updateSpikeTower(tower, dt, stats) {
       const dx = enemy.x - tower.x;
       const dy = enemy.y - tower.y;
       const forward = dx * dir.x + dy * dir.y;
-      if (forward <= 0 || forward > limit + getEnemyRadius(enemy)) continue;
+      const radius = getEnemyRadius(enemy);
+      if (forward <= 0 || forward > limit + radius) continue;
       const side = Math.abs(dir.x ? dy : dx);
-      if (side > laneHalfWidth + getEnemyRadius(enemy) * 0.4) continue;
+      if (side > laneHalfWidth + radius * 0.4) continue;
       hits.push({ enemy, dist: forward });
     }
     hits.sort((a, b) => a.dist - b.dist);
