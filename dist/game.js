@@ -1445,6 +1445,12 @@ function placeTower(type, x, y) {
     tower.upgradePath = 1;
     tower.trapCooldown = 0;
   }
+  if (type === "spikeTower") {
+    tower.spikePhase = "idle";
+    tower.spikeProgress = 0;
+    tower.spikeHoldTimer = 0;
+    tower.spikeDir = getSpikeDirection(tower);
+  }
   if (type === "dart") {
     tower.upgradePath = 1;
   }
@@ -5004,23 +5010,7 @@ function drawPath() {
 
     ctx.restore();
   }
-  for (const entry of junctions.values()) {
-    if (entry.count < 2) continue;
-    ctx.save();
-    ctx.fillStyle = outerColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 18, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = midColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 10, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = innerColor;
-    ctx.beginPath();
-    ctx.arc(entry.x, entry.y, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
+  void junctions;
 }
 
 function drawPortalAt(origin, t) {
