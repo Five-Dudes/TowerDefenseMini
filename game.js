@@ -535,7 +535,7 @@ const towerTypes = {
     damage: 26,
     color: "#f472b6",
     slow: 0,
-    spikeRange: 120,
+    spikeRange: 40,
     spikeExtendSpeed: 8,
     spikeRetractSpeed: 1,
     spikeHold: 0.6,
@@ -1943,9 +1943,8 @@ function getTowerStats(tower) {
     if (tower.type === "spikeTower") {
       const tier = Math.min(level, 5);
       const path = tower.upgradePath || 1;
-      const nearest = getNearestPathPoint(tower.x, tower.y);
       spikeDamage = data.damage;
-      spikeRange = nearest ? nearest.dist + 160 : data.spikeRange;
+      spikeRange = grid.size;
       spikeExtendSpeed = data.spikeExtendSpeed;
       spikeRetractSpeed = data.spikeRetractSpeed;
       spikeHold = data.spikeHold;
