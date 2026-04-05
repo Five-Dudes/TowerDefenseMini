@@ -981,38 +981,43 @@ function updateEncyclopedia() {
   const enemyEntries = [
     {
       key: "grunt",
-      name: "Grunt",
+      name: "Vanguard",
       desc: "Standard enemy with balanced speed.",
     },
     {
       key: "speedy",
-      name: "Speedy Frog",
+      name: "Bolt",
       desc: "Very quick but not tanky.",
     },
     {
       key: "heavy",
-      name: "Heavy",
+      name: "Juggernaut",
       desc: "Very tanky but slow.",
     },
     {
       key: "stealth",
-      name: "Stealth",
+      name: "Shade",
       desc: "Hidden until tapped. Watch towers can see it.",
     },
     {
       key: "boss",
-      name: "Boss",
+      name: "Titan",
       desc: "Huge health. Shows up every 10 waves.",
     },
     {
       key: "labrat",
-      name: "Lab Rat",
+      name: "Cipher",
       desc: "Slightly squishy octagon. Immune to nukes.",
     },
     {
       key: "diamond",
-      name: "Diamond",
+      name: "Prism",
       desc: "Armored, light-blue foe. Immune to heat and explosions.",
+    },
+    {
+      key: "flying",
+      name: "Skimmer",
+      desc: "Floats over mines and traps. Slower, less durable.",
     },
     {
       key: "aegis",
@@ -1021,7 +1026,7 @@ function updateEncyclopedia() {
     },
     {
       key: "swarm",
-      name: "Swarm",
+      name: "Brood",
       desc: "Summons a flurry of tiny, fast enemies.",
     },
   ];
@@ -1095,8 +1100,14 @@ function getEnemyIcon(type) {
   if (type === "labrat") {
     return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,4 28,8 32,18 28,28 18,32 8,28 4,18 8,8" fill="#fbbf24" stroke="#0f172a" stroke-width="2"/></svg>`;
   }
+  if (type === "flying") {
+    return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="30,18 12,26 12,10" fill="#38bdf8" stroke="#0f172a" stroke-width="2"/><line x1="6" y1="18" x2="12" y2="18" stroke="#e2e8f0" stroke-width="2"/><line x1="24" y1="18" x2="30" y2="18" stroke="#e2e8f0" stroke-width="2"/></svg>`;
+  }
   if (type === "diamond") {
     return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,3 33,18 18,33 3,18" fill="#e0f2fe" stroke="#0f172a" stroke-width="2"/></svg>`;
+  }
+  if (type === "aegis") {
+    return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,4 30,10 32,18 30,26 18,32 6,26 4,18 6,10" fill="#60a5fa" stroke="#0f172a" stroke-width="2"/><circle cx="${center}" cy="${center}" r="13" fill="none" stroke="rgba(59,130,246,0.8)" stroke-width="2"/></svg>`;
   }
   if (type === "swarm") {
     return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><circle cx="${center}" cy="${center}" r="10" fill="#94a3b8" stroke="#0f172a" stroke-width="2"/><circle cx="${center}" cy="${center}" r="4" fill="#0f172a"/></svg>`;
@@ -1132,8 +1143,8 @@ function showAlert(title, message, pauseWave = false) {
 function handleWaveAlerts(wave) {
   if (wave === 2) {
     showAlert(
-      "Stealth Incoming",
-      "<p>Stealth enemies arrive on Wave 4.</p><p>Build <strong>Watch Towers</strong> to reveal them.</p>"
+      "Shade Incoming",
+      "<p>Shade enemies arrive on Wave 4.</p><p>Build <strong>Watch Towers</strong> to reveal them.</p>"
     );
   } else if (wave === 3) {
     showAlert(
@@ -1142,8 +1153,8 @@ function handleWaveAlerts(wave) {
     );
   } else if (wave === 4) {
     showAlert(
-      "Stealth Wave",
-      "<p>Stealth enemies are here.</p><p>Place <strong>Watch Towers</strong> to reveal them.</p>",
+      "Shade Wave",
+      "<p>Shade enemies are here.</p><p>Place <strong>Watch Towers</strong> to reveal them.</p>",
       true
     );
   } else if (wave === 5) {
@@ -1199,15 +1210,17 @@ function spawnEnemy() {
     type = "speedy";
   } else if (roll < 0.22) {
     type = "heavy";
-  } else if (roll < 0.28 && state.wave >= 8) {
+  } else if (roll < 0.26 && state.wave >= 6) {
+    type = "flying";
+  } else if (roll < 0.3 && state.wave >= 8) {
     type = "aegis";
-  } else if (roll < 0.3 && state.wave >= 4) {
+  } else if (roll < 0.32 && state.wave >= 4) {
     type = "stealth";
-  } else if (roll < 0.36) {
+  } else if (roll < 0.38) {
     type = "labrat";
-  } else if (roll < 0.42 && state.wave >= 15) {
+  } else if (roll < 0.44 && state.wave >= 15) {
     type = "diamond";
-  } else if (roll < 0.48 && state.wave >= 10) {
+  } else if (roll < 0.5 && state.wave >= 10) {
     type = "swarm";
   }
   let armored = false;
@@ -1280,6 +1293,7 @@ function createEnemy(type, options = {}) {
   const isHeavy = type === "heavy" || type === "boss_pentagon" || type === "boss_hexagon";
   const isDiamond = type === "diamond" || type === "boss_diamond";
   const isAegis = type === "aegis";
+  const isFlying = type === "flying";
   const tier = isBoss ? 3 : Math.min(3, Math.floor((state.wave - 1) / 6) + 1);
   const tierFactor = tier === 3 ? 4 : tier === 2 ? 2 : 1;
   const baseHp = state.wave === 1 ? 20 : 22 + state.wave * 5;
@@ -1302,6 +1316,10 @@ function createEnemy(type, options = {}) {
   if (isAegis) {
     maxHp *= 1.2;
     speed *= 0.9;
+  }
+  if (isFlying) {
+    maxHp *= 0.7;
+    speed *= 0.85;
   }
   if (isSwarmlet) {
     maxHp *= 0.2;
@@ -1357,6 +1375,7 @@ function createEnemy(type, options = {}) {
     castleDamage: baseCastleDamage,
     umbrellaRadius: isAegis ? grid.size * 2 : 0,
     umbrellaShielded: false,
+    flying: isFlying,
   };
   if (enemy.armored) {
     enemy.armorHits = 0;
@@ -2233,6 +2252,44 @@ function getTowerDescription(type) {
   }
 }
 
+function getTowerDisplayName(tower) {
+  const baseNames = {
+    watch: "Watch Tower",
+    freeze: "Freeze Tower",
+    drone: "Drone Tower",
+    bomb: "Bomb Shooter",
+    laser: "Laser Tower",
+    dart: "Dart Tower",
+    flame: "Flamethrower",
+    trap: "Trap Setter",
+    spikeTower: "Spike Tower",
+    mine: "Mine",
+    floorSpike: "Floor Spikes",
+    wall: "Wall",
+    op: "Overpowered",
+  };
+  const upgradedNames = {
+    watch: "Sentinel",
+    freeze: "Cryo Vortex",
+    drone: "Sky Marshal",
+    bomb: "Siegebreaker",
+    laser: "Arc Lance",
+    dart: "Toxin Lord",
+    flame: "Hellstream",
+    trap: "Hex Smith",
+    spikeTower: "Impaler",
+    mine: "Rift Charge",
+    floorSpike: "Barb Field",
+    wall: "Bastion",
+    op: "Annihilator",
+  };
+  const level = tower && tower.level ? tower.level : 1;
+  const type = tower ? tower.type : null;
+  if (!type) return "Tower";
+  if (level >= 3 && upgradedNames[type]) return upgradedNames[type];
+  return baseNames[type] || "Tower";
+}
+
 function applyPathLock(tower) {
   const tier = Math.min(tower.level || 1, 5);
   const path = tower.upgradePath || 1;
@@ -2631,13 +2688,14 @@ function updateUpgradePanel() {
   const burnText = stats.fireDps > 0 ? ` | Burn ${stats.fireDps.toFixed(1)}/s (${stats.fireDuration.toFixed(1)}s)` : "";
   const speedText = stats.projectileSpeed ? ` | Shot Spd ${Math.round(stats.projectileSpeed)}` : "";
   const statLine = `Range ${Math.round(stats.range)} | Rate ${stats.rate.toFixed(2)}s | Damage ${Math.round(stats.damage)}${tower.type === "freeze" ? ` | Slow ${stats.slow.toFixed(2)}` : ""}${speedText}${burnText}`;
+  const displayName = getTowerDisplayName(tower);
   const cap = state.towerLevelCap || 5;
   if (bombMaxed) {
-    ui.upgradeDetails.textContent = `MAX TIER.\n\n${desc}\n\n${upgradeText}\n\n${statLine}`;
+    ui.upgradeDetails.textContent = `${displayName}\n\nMAX TIER.\n\n${desc}\n\n${upgradeText}\n\n${statLine}`;
   } else if ((tower.level || 1) >= cap) {
-    ui.upgradeDetails.textContent = `MAX TIER.\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
+    ui.upgradeDetails.textContent = `${displayName}\n\nMAX TIER.\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
   } else {
-    ui.upgradeDetails.textContent = `Next: Tier ${nextTier} (Cost ${upgradeCost}).\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
+    ui.upgradeDetails.textContent = `${displayName}\n\nNext: Tier ${nextTier} (Cost ${upgradeCost}).\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
   }
   if (ui.watchUpgradeActions) {
     ui.watchUpgradeActions.classList.toggle("hidden", tower.type !== "watch");
@@ -3413,6 +3471,7 @@ function updateTraps(dt) {
     });
     for (const splash of state.enemies) {
       if (splash.hp <= 0) continue;
+      if (splash.flying) continue;
       const splashDist = Math.hypot(splash.x - trap.x, splash.y - trap.y);
       if (splashDist <= trap.splashRadius) {
         applyExplosionDamage(splash, trap.damage);
@@ -3453,6 +3512,7 @@ function updateTraps(dt) {
         let bestDist = Infinity;
         for (const enemy of state.enemies) {
           if (enemy.hp <= 0) continue;
+          if (enemy.flying) continue;
           const dist = Math.hypot(enemy.x - trap.x, enemy.y - trap.y);
           if (dist <= trap.turretRange && dist < bestDist) {
             target = enemy;
@@ -3484,6 +3544,7 @@ function updateTraps(dt) {
     let triggered = false;
     for (const enemy of state.enemies) {
       if (enemy.hp <= 0) continue;
+      if (enemy.flying) continue;
       const dist = Math.hypot(enemy.x - trap.x, enemy.y - trap.y);
       if (dist <= 16) {
         if (trap.explode) {
@@ -4536,6 +4597,7 @@ function updateMines() {
     let triggered = false;
     for (const enemy of state.enemies) {
       if (enemy.hp <= 0) continue;
+      if (enemy.flying) continue;
       if (enemy.stealth && !enemy.revealed) continue;
       const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
       if (dist <= data.triggerRadius) {
@@ -4548,6 +4610,7 @@ function updateMines() {
         });
         for (const target of state.enemies) {
           if (target.hp <= 0) continue;
+          if (target.flying) continue;
           const splashDist = Math.hypot(target.x - tower.x, target.y - tower.y);
           if (splashDist <= data.splashRadius) {
             applyExplosionDamage(target, data.damage);
@@ -5553,12 +5616,12 @@ function drawTowers() {
         ctx.fillStyle = shadeColor(base, 1.1);
         ctx.beginPath();
         if (dir.x !== 0) {
-          const half = 6;
+          const half = grid.size * 0.25;
           ctx.moveTo(tower.x + dir.x * 10, tower.y - half);
           ctx.lineTo(tower.x + dir.x * 10, tower.y + half);
           ctx.lineTo(tipX, tipY);
         } else {
-          const half = 6;
+          const half = grid.size * 0.25;
           ctx.moveTo(tower.x - half, tower.y + dir.y * 10);
           ctx.lineTo(tower.x + half, tower.y + dir.y * 10);
           ctx.lineTo(tipX, tipY);
@@ -5809,6 +5872,8 @@ function drawEnemies() {
             ? "#e0f2fe"
             : enemy.type === "labrat"
               ? "#fbbf24"
+              : enemy.type === "flying"
+                ? "#38bdf8"
               : enemy.type === "aegis"
                 ? "#60a5fa"
               : isBoss
@@ -5836,6 +5901,16 @@ function drawEnemies() {
       drawHexagon(pos.x, pos.y, radius, baseColor);
     } else if (enemy.type === "labrat") {
       drawOctagon(pos.x, pos.y, radius, baseColor);
+    } else if (enemy.type === "flying") {
+      drawTriangle(pos.x, pos.y, radius * 0.9, enemy.facing, baseColor);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.65)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pos.x - radius * 0.9, pos.y);
+      ctx.lineTo(pos.x - radius * 0.2, pos.y);
+      ctx.moveTo(pos.x + radius * 0.2, pos.y);
+      ctx.lineTo(pos.x + radius * 0.9, pos.y);
+      ctx.stroke();
     } else if (enemy.type === "diamond" || enemy.type === "boss_diamond") {
       drawDiamond(pos.x, pos.y, radius, baseColor);
     } else if (enemy.type === "aegis") {
