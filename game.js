@@ -4030,7 +4030,24 @@ function updateSpikeTower(tower, dt, stats) {
     return hitTargets.length;
   };
   if (phase === "idle") {
-    if (!hasEnemyInSpikeLane(tower, maxLen)) return;
+    const laneReady = hasEnemyInSpikeLane(tower, maxLen);
+    if (!laneReady) {
+      const limit = maxLen + grid.size * 0.6;
+      let nearby = false;
+      for (const enemy of state.enemies) {
+        if (enemy.hp <= 0) continue;
+        if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
+          ensureEnemyPath(enemy);
+        }
+        if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) continue;
+        const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
+        if (dist <= limit + getEnemyRadius(enemy)) {
+          nearby = true;
+          break;
+        }
+      }
+      if (!nearby) return;
+    }
     tower.spikePhase = "extend";
     tower.spikeProgress = 0;
     tower.spikeHit = false;
