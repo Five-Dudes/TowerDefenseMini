@@ -227,6 +227,8 @@ const state = {
 window.state = state;
 window.getState = () => state;
 window.updateTowers = updateTowers;
+window.getTowerStats = getTowerStats;
+window.selectTarget = selectTarget;
 window.debugState = () => ({
   wave: state.wave,
   waveInProgress: state.waveInProgress,
