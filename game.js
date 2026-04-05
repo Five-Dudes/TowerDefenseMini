@@ -1045,6 +1045,11 @@ function updateEncyclopedia() {
       desc: "Late-game menace with many traits that splits on death.",
     },
     {
+      key: "broodMother",
+      name: "Brood Mother",
+      desc: "Spawns broods of swarmlets as it advances.",
+    },
+    {
       key: "aegis",
       name: "Aegis",
       desc: "Projects a shield that cancels area damage for nearby enemies.",
@@ -1143,6 +1148,9 @@ function getEnemyIcon(type) {
   if (type === "chimera") {
     return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,4 30,10 32,18 30,26 18,32 6,26 4,18 6,10" fill="#c084fc" stroke="#0f172a" stroke-width="2"/><circle cx="${center}" cy="${center}" r="13" fill="none" stroke="rgba(168,85,247,0.8)" stroke-width="2"/></svg>`;
   }
+  if (type === "broodMother") {
+    return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><circle cx="${center}" cy="${center}" r="12" fill="#ec4899" stroke="#0f172a" stroke-width="2"/><circle cx="${center}" cy="${center}" r="4" fill="#0f172a"/><circle cx="${center - 8}" cy="${center - 6}" r="2" fill="#0f172a"/><circle cx="${center + 8}" cy="${center + 6}" r="2" fill="#0f172a"/></svg>`;
+  }
   if (type === "diamond") {
     return `<svg viewBox="0 0 36 36" width="${size}" height="${size}"><polygon points="18,3 33,18 18,33 3,18" fill="#e0f2fe" stroke="#0f172a" stroke-width="2"/></svg>`;
   }
@@ -1184,7 +1192,7 @@ function handleWaveAlerts(wave) {
   if (wave === 2) {
     showAlert(
       "Shade Incoming",
-      "<p>Shade enemies arrive on Wave 4.</p><p>Build <strong>Watch Towers</strong> to reveal them.</p>"
+      "<p>Shade enemies arrive on Wave 4.</p><p>Build <strong>Watch Towers</strong> or <strong>tap shades</strong> to reveal them.</p>"
     );
   } else if (wave === 3) {
     showAlert(
@@ -1194,7 +1202,7 @@ function handleWaveAlerts(wave) {
   } else if (wave === 4) {
     showAlert(
       "Shade Wave",
-      "<p>Shade enemies are here.</p><p>Place <strong>Watch Towers</strong> to reveal them.</p>",
+      "<p>Shade enemies are here.</p><p>Place <strong>Watch Towers</strong> or <strong>tap shades</strong> to reveal them.</p>",
       true
     );
   } else if (wave === 5) {
@@ -1262,15 +1270,17 @@ function spawnEnemy() {
     type = "buffer";
   } else if (roll < 0.42 && state.wave >= 12) {
     type = "saboteur";
-  } else if (roll < 0.44 && state.wave >= 4) {
+  } else if (roll < 0.45 && state.wave >= 12) {
+    type = "broodMother";
+  } else if (roll < 0.5 && state.wave >= 4) {
     type = "stealth";
-  } else if (roll < 0.48) {
+  } else if (roll < 0.54) {
     type = "labrat";
-  } else if (roll < 0.54 && state.wave >= 15) {
+  } else if (roll < 0.6 && state.wave >= 15) {
     type = "diamond";
-  } else if (roll < 0.6 && state.wave >= 10) {
+  } else if (roll < 0.66 && state.wave >= 10) {
     type = "swarm";
-  } else if (roll < 0.63 && state.wave >= 25) {
+  } else if (roll < 0.68 && state.wave >= 25) {
     type = "chimera";
   }
   let armored = false;
@@ -1349,6 +1359,7 @@ function createEnemy(type, options = {}) {
   const isBuffer = type === "buffer";
   const isSaboteur = type === "saboteur";
   const isChimera = type === "chimera";
+  const isBroodMother = type === "broodMother";
   const tier = isBoss ? 3 : Math.min(3, Math.floor((state.wave - 1) / 6) + 1);
   const tierFactor = tier === 3 ? 4 : tier === 2 ? 2 : 1;
   const baseHp = state.wave === 1 ? 20 : 22 + state.wave * 5;
@@ -1395,6 +1406,10 @@ function createEnemy(type, options = {}) {
   if (isChimera) {
     maxHp *= 2.2;
     speed *= 0.85;
+  }
+  if (isBroodMother) {
+    maxHp *= 1.5;
+    speed *= 0.8;
   }
   if (isSwarmlet) {
     maxHp *= 0.2;
@@ -1465,6 +1480,8 @@ function createEnemy(type, options = {}) {
     saboteur: isSaboteur,
     sabotageTimer: isSaboteur ? 1.8 : 0,
     chimera: isChimera,
+    broodMother: isBroodMother,
+    broodTimer: isBroodMother ? 2.4 : 0,
   };
   if (enemy.armored) {
     enemy.armorHits = 0;
@@ -2358,7 +2375,7 @@ function getTowerDisplayName(tower) {
     watch: "Watch Tower",
     freeze: "Freeze Tower",
     drone: "Drone Tower",
-    bomb: "Bomb Shooter",
+    bomb: "Bomb Tower",
     laser: "Laser Tower",
     dart: "Dart Tower",
     flame: "Flamethrower",
@@ -4579,6 +4596,28 @@ function updateSpikeTowers(dt) {
   }
 }
 
+function spawnBroodlets(origin, count) {
+  const pathGroup = Number.isFinite(origin.pathGroup) ? origin.pathGroup : 0;
+  const fallbackPaths = getActivePaths();
+  const pathPoints = (origin.path && origin.path.length > 0)
+    ? origin.path
+    : (fallbackPaths[pathGroup] || fallbackPaths[0] || []);
+  for (let i = 0; i < count; i += 1) {
+    const brood = createEnemy("swarmlet", {
+      armored: false,
+      darkMatter: false,
+      stealth: false,
+      pathGroup,
+    });
+    brood.x = origin.x + (Math.random() - 0.5) * 14;
+    brood.y = origin.y + (Math.random() - 0.5) * 14;
+    brood.path = pathPoints;
+    brood.pathIndex = Math.max(0, Math.min(origin.pathIndex || 0, Math.max(0, pathPoints.length - 1)));
+    brood.pathOffset = { x: 0, y: 0 };
+    state.enemies.push(brood);
+  }
+}
+
 function updateEnemies(dt) {
   for (const enemy of state.enemies) {
     enemy.umbrellaShielded = false;
@@ -4661,6 +4700,13 @@ function updateEnemies(dt) {
           towerTarget.stunTimer = Math.max(towerTarget.stunTimer || 0, 1.5);
         }
         enemy.sabotageTimer = 2.2;
+      }
+    }
+    if (enemy.broodMother) {
+      enemy.broodTimer = Math.max(0, (enemy.broodTimer || 0) - dt);
+      if (enemy.broodTimer <= 0) {
+        spawnBroodlets(enemy, 3);
+        enemy.broodTimer = 2.6;
       }
     }
     if (enemy.slowTimer > 0) {
@@ -5710,23 +5756,27 @@ function drawMines() {
       continue;
     }
     const base = data.color || "#f97316";
-    const stroke = shadeColor(base, 0.6);
+    const stroke = shadeColor(base, 0.55);
     const progress = tower.spikeProgress || 0;
-    const height = 4 + 10 * progress;
-    ctx.fillStyle = shadeColor(base, 0.6);
-    ctx.fillRect(tower.x - 14, tower.y - 14, 28, 28);
+    const height = 5 + 12 * progress;
+    ctx.fillStyle = shadeColor(base, 0.5);
+    ctx.beginPath();
+    ctx.arc(tower.x, tower.y, 16, 0, Math.PI * 2);
+    ctx.fill();
     ctx.strokeStyle = stroke;
     ctx.lineWidth = 2;
-    ctx.strokeRect(tower.x - 14, tower.y - 14, 28, 28);
-    ctx.fillStyle = shadeColor(base, 1.1);
-    const offsets = [-8, 0, 8];
+    ctx.beginPath();
+    ctx.arc(tower.x, tower.y, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = shadeColor(base, 1.15);
+    const offsets = [-10, -5, 0, 5, 10];
     for (const ox of offsets) {
       for (const oy of offsets) {
         const sx = tower.x + ox;
         const sy = tower.y + oy;
         ctx.beginPath();
-        ctx.moveTo(sx - 3, sy + 4);
-        ctx.lineTo(sx + 3, sy + 4);
+        ctx.moveTo(sx - 1.6, sy + 4);
+        ctx.lineTo(sx + 1.6, sy + 4);
         ctx.lineTo(sx, sy + 4 - height);
         ctx.closePath();
         ctx.fill();
@@ -6095,8 +6145,10 @@ function drawEnemies() {
                     ? "#22c55e"
                     : enemy.type === "saboteur"
                       ? "#ef4444"
-                      : enemy.type === "chimera"
-                        ? "#c084fc"
+                    : enemy.type === "chimera"
+                      ? "#c084fc"
+                      : enemy.type === "broodMother"
+                        ? "#ec4899"
               : enemy.type === "flying"
                 ? "#38bdf8"
               : enemy.type === "aegis"
@@ -6155,6 +6207,16 @@ function drawEnemies() {
       drawHexagon(pos.x, pos.y, radius, baseColor);
     } else if (enemy.type === "chimera") {
       drawHexagon(pos.x, pos.y, radius * 1.1, baseColor);
+    } else if (enemy.type === "broodMother") {
+      drawSphere(pos.x, pos.y, radius * 1.1, baseColor);
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(pos.x - radius * 0.55, pos.y - radius * 0.35, radius * 0.14, 0, Math.PI * 2);
+      ctx.arc(pos.x + radius * 0.55, pos.y + radius * 0.35, radius * 0.14, 0, Math.PI * 2);
+      ctx.fill();
     } else {
       drawSphere(pos.x, pos.y, radius, baseColor);
     }
