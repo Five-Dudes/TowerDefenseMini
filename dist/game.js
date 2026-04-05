@@ -4123,11 +4123,14 @@ function updateSpikeTower(tower, dt, stats) {
         tower.spikeHit = applyLaneDamage(maxLen) > 0;
       }
       tower.spikePhase = "hold";
-      tower.spikeHoldTimer = spikeHold;
+      tower.spikeHoldTimer = 1;
     }
     return;
   }
   if (phase === "hold") {
+    if (!tower.spikeHit) {
+      tower.spikeHit = applyLaneDamage(maxLen) > 0;
+    }
     tower.spikeHoldTimer = Math.max(0, (tower.spikeHoldTimer || 0) - dt);
     if (drillDps > 0 && tower.spikeDrillTarget && tower.spikeDrillTarget.hp > 0) {
       const target = tower.spikeDrillTarget;
