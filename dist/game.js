@@ -5827,16 +5827,18 @@ function update(dt) {
   updateMines();
   updateTraps(simDt);
   updateTowers(simDt);
-  if (state.waveInProgress && state.enemies.length > 0 && state.projectiles.length === 0) {
+  if (state.waveInProgress && state.enemies.length > 0) {
     for (const tower of state.towers) {
       const stats = getTowerStats(tower);
       if (!stats) continue;
       const data = stats.data;
       if (tower.disabled) continue;
       if (data.isMine || data.isFloorSpike || tower.type === "wall" || tower.type === "spikeTower" || tower.type === "trap") continue;
+      tower.cooldown = Math.max(0, (tower.cooldown || 0) - simDt);
       if (tower.cooldown > 0 && tower.type !== "freeze") continue;
       const target = selectTarget(tower, stats) || getClosestEnemyTarget(tower.x, tower.y);
       if (!target) continue;
+      tower.aimAngle = Math.atan2(target.y - tower.y, target.x - tower.x);
       if (tower.type === "freeze") {
         emitFreezeGas(tower, target, stats);
       } else if (tower.type === "flame") {
