@@ -533,7 +533,7 @@ const towerTypes = {
     damage: 26,
     color: "#f472b6",
     slow: 0,
-    spikeRange: 60,
+    spikeRange: 120,
     spikeExtendSpeed: 8,
     spikeRetractSpeed: 2.4,
     spikeHold: 0.8,
@@ -3800,6 +3800,21 @@ function selectTarget(tower, stats) {
   return best.enemy;
 }
 
+function updateTrapSetters(dt) {
+  if (state.nukeSmoke) return;
+  for (const tower of state.towers) {
+    if (tower.type !== "trap") continue;
+    const trapStats = getTrapSetterStats(tower);
+    if (!trapStats) continue;
+    const current = Number.isFinite(tower.trapCooldown) ? tower.trapCooldown : 0;
+    tower.trapCooldown = Math.max(0, current - dt);
+    if (tower.trapCooldown <= 0) {
+      spawnTrapFrom(tower, trapStats);
+      tower.trapCooldown = trapStats.trapInterval;
+    }
+  }
+}
+
 function updateSpikeTower(tower, dt, stats) {
   const data = stats ? stats.data : towerTypes.spikeTower;
   const maxLen = (stats && stats.spikeRange) || data.spikeRange || 32;
@@ -4003,15 +4018,6 @@ function updateTowers(dt) {
     if (data.isMine || data.isFloorSpike || data.blocksPath) continue;
     if (tower.type === "spikeTower") {
       updateSpikeTower(tower, dt, stats);
-      continue;
-    }
-    if (tower.type === "trap") {
-      const trapStats = getTrapSetterStats(tower);
-      tower.trapCooldown = Math.max(0, (tower.trapCooldown || 0) - dt);
-      if (tower.trapCooldown <= 0) {
-        spawnTrapFrom(tower, trapStats);
-        tower.trapCooldown = trapStats.trapInterval;
-      }
       continue;
     }
     if (tower.type === "drone" && stats.droneBombRate > 0) {
@@ -5931,6 +5937,7 @@ function update(dt) {
   updateEnemies(simDt);
   updateFloorSpikes(simDt);
   updateMines();
+  updateTrapSetters(simDt);
   updateTraps(simDt);
   updateTowers(simDt);
   if (state.waveInProgress && state.enemies.length > 0) {
