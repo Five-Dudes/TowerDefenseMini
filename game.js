@@ -519,7 +519,7 @@ const towerTypes = {
   },
   trap: {
     cost: 110,
-    range: 0,
+    range: 140,
     rate: 0,
     damage: 0,
     color: "#f59e0b",
@@ -3518,6 +3518,7 @@ function getTrapSetterStats(tower) {
   let trapLifetime = 30;
   let trapDamage = 9;
   let trapType = "spike";
+  let trapRange = 140;
   let slow = 0;
   let explode = false;
   let splashRadius = 40;
@@ -3549,6 +3550,7 @@ function getTrapSetterStats(tower) {
       turret = true;
       turretDamage = 8;
       turretRange = 120;
+      trapRange += 20;
       spawnCount = 2;
       trapLifetime += 75;
       sentryLimit = 12;
@@ -3571,6 +3573,7 @@ function getTrapSetterStats(tower) {
       explode = true;
       trapDamage *= 3.2;
       splashRadius = 90;
+      trapRange += 30;
       trapLifetime += 125;
     }
   }
@@ -3580,6 +3583,7 @@ function getTrapSetterStats(tower) {
     trapLifetime,
     trapDamage,
     trapType,
+    trapRange,
     slow,
     explode,
     splashRadius,
@@ -3593,10 +3597,12 @@ function getTrapSetterStats(tower) {
   };
 }
 
-function findTrapSpawnPoint(tower, onPath, snap = true) {
+function findTrapSpawnPoint(tower, onPath, range, snap = true) {
   for (let i = 0; i < 12; i += 1) {
     const angle = Math.random() * Math.PI * 2;
-    const radius = 40 + Math.random() * 90;
+    const minRadius = Math.max(30, range * 0.35);
+    const maxRadius = Math.max(minRadius + 20, range);
+    const radius = minRadius + Math.random() * (maxRadius - minRadius);
     const x = tower.x + Math.cos(angle) * radius;
     const y = tower.y + Math.sin(angle) * radius;
     if (x < 8 || x > canvas.width - 8 || y < 8 || y > canvas.height - 8) continue;
@@ -3612,7 +3618,7 @@ function spawnTrapFrom(tower, stats) {
   const onPath = !(stats.trapType === "turret" || stats.trapType === "sentry");
   const snap = onPath && !(stats.trapType === "mine" || stats.trapType === "supermine");
   for (let i = 0; i < stats.spawnCount; i += 1) {
-    const point = findTrapSpawnPoint(tower, onPath, snap);
+    const point = findTrapSpawnPoint(tower, onPath, stats.trapRange || 140, snap);
     if (!point) continue;
     const smallFootprint = stats.trapType === "turret" || stats.trapType === "sentry";
     if (stats.trapType === "sentry" && stats.sentryLimit > 0) {
