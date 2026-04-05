@@ -3615,6 +3615,23 @@ function findTrapSpawnPoint(tower, onPath, range, snap = true) {
     if (!onPath && isOnPath(point.x, point.y)) continue;
     return point;
   }
+  if (onPath) {
+    const paths = getActivePaths();
+    let best = null;
+    let bestDist = Infinity;
+    for (const points of paths) {
+      for (const node of points) {
+        const dist = Math.hypot(node.x - tower.x, node.y - tower.y);
+        if (dist <= range && dist < bestDist) {
+          bestDist = dist;
+          best = node;
+        }
+      }
+    }
+    if (best) {
+      return snap ? snapToGrid(best.x, best.y) : { x: best.x, y: best.y };
+    }
+  }
   return null;
 }
 
