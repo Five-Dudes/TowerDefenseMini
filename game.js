@@ -1943,9 +1943,8 @@ function getTowerStats(tower) {
     if (tower.type === "spikeTower") {
       const tier = Math.min(level, 5);
       const path = tower.upgradePath || 1;
-      const nearest = getNearestPathPoint(tower.x, tower.y);
       spikeDamage = data.damage;
-      spikeRange = nearest ? nearest.dist + 160 : data.spikeRange;
+      spikeRange = grid.size * 1.25;
       spikeExtendSpeed = data.spikeExtendSpeed;
       spikeRetractSpeed = data.spikeRetractSpeed;
       spikeHold = data.spikeHold;
@@ -3927,7 +3926,7 @@ function forceSpikeExtend(tower) {
   if (state.enemies.length === 0) return;
   const dir = tower.spikeDir || getSpikeDirection(tower);
   if (!dir) return;
-  tower.spikeDir = { x: -dir.x, y: -dir.y };
+  tower.spikeDir = dir;
   tower.spikePhase = "extend";
   tower.spikeProgress = 0;
   tower.spikeHit = false;
@@ -3942,7 +3941,7 @@ function updateSpikeTower(tower, dt, stats) {
   const shouldExtend = hasEnemyInRange(tower, maxLen);
   const baseDir = getSpikeDirection(tower);
   if (baseDir) {
-    tower.spikeDir = { x: -baseDir.x, y: -baseDir.y };
+    tower.spikeDir = baseDir;
   }
   const pickSpikeTarget = () => {
     let best = null;
