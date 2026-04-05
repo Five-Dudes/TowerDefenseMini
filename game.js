@@ -5827,6 +5827,28 @@ function update(dt) {
   updateMines();
   updateTraps(simDt);
   updateTowers(simDt);
+  if (state.waveInProgress && state.enemies.length > 0 && state.projectiles.length === 0) {
+    for (const tower of state.towers) {
+      const stats = getTowerStats(tower);
+      if (!stats) continue;
+      const data = stats.data;
+      if (tower.disabled) continue;
+      if (data.isMine || data.isFloorSpike || tower.type === "wall" || tower.type === "spikeTower" || tower.type === "trap") continue;
+      if (tower.cooldown > 0 && tower.type !== "freeze") continue;
+      const target = selectTarget(tower, stats) || getClosestEnemyTarget(tower.x, tower.y);
+      if (!target) continue;
+      if (tower.type === "freeze") {
+        emitFreezeGas(tower, target, stats);
+      } else if (tower.type === "flame") {
+        fireFlameCone(tower, target, stats);
+      } else if (data.laser) {
+        fireLaser(tower, target, stats, stats.range || 0);
+      } else {
+        fireProjectile(tower, target, stats);
+      }
+      tower.cooldown = stats.rate;
+    }
+  }
   updateProjectiles(simDt);
   updateExplosions(simDt);
   updateNukeLaunches(simDt);
