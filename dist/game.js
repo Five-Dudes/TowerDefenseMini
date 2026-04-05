@@ -387,35 +387,6 @@ const maps = [
       ],
     ],
   },
-  {
-    id: "yfork",
-    name: "Y Fork",
-    desc: "Two branches merge into one path.",
-    palette: {
-      top: "#0f2434",
-      mid: "#0c1b2a",
-      bottom: "#070f1b",
-      shadow: "rgba(3, 8, 14, 0.35)",
-    },
-    paths: [
-      [
-        { x: 40, y: 110 },
-        { x: 260, y: 110 },
-        { x: 360, y: 220 },
-        { x: 540, y: 220 },
-        { x: 660, y: 320 },
-        { x: 900, y: 320 },
-      ],
-      [
-        { x: 40, y: 430 },
-        { x: 260, y: 430 },
-        { x: 360, y: 220 },
-        { x: 540, y: 220 },
-        { x: 660, y: 320 },
-        { x: 900, y: 320 },
-      ],
-    ],
-  },
 ];
 
 const grid = {
@@ -5000,6 +4971,14 @@ function drawPath() {
   const midColor = lerpColor([9, 20, 36], [54, 9, 80], lossRatio);
   const innerColor = lerpColor([24, 74, 110], [120, 40, 150], lossRatio);
   const junctions = new Map();
+  const junctionDirs = new Map();
+  const addDir = (point, dir) => {
+    const key = `${Math.round(point.x)}:${Math.round(point.y)}`;
+    if (!junctionDirs.has(key)) {
+      junctionDirs.set(key, { x: point.x, y: point.y, dirs: new Set() });
+    }
+    junctionDirs.get(key).dirs.add(dir);
+  };
   for (const points of paths) {
     if (!points || points.length === 0) continue;
     for (const point of points) {
@@ -5007,6 +4986,21 @@ function drawPath() {
       const entry = junctions.get(key) || { x: point.x, y: point.y, count: 0 };
       entry.count += 1;
       junctions.set(key, entry);
+    }
+  }
+  for (const points of paths) {
+    if (!points || points.length < 2) continue;
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const a = points[i];
+      const b = points[i + 1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dir = Math.abs(dx) >= Math.abs(dy)
+        ? (dx > 0 ? "E" : "W")
+        : (dy > 0 ? "S" : "N");
+      const opposite = dir === "E" ? "W" : dir === "W" ? "E" : dir === "S" ? "N" : "S";
+      addDir(a, dir);
+      addDir(b, opposite);
     }
   }
   for (const points of paths) {
@@ -5044,7 +5038,30 @@ function drawPath() {
 
     ctx.restore();
   }
-  void junctions;
+  for (const entry of junctions.values()) {
+    if (entry.count < 2) continue;
+    const dirEntry = junctionDirs.get(`${Math.round(entry.x)}:${Math.round(entry.y)}`);
+    if (!dirEntry || dirEntry.dirs.size < 2) continue;
+    const connector = 12;
+    const drawConnector = (width, color) => {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = "butt";
+      for (const dir of dirEntry.dirs) {
+        const dx = dir === "E" ? 1 : dir === "W" ? -1 : 0;
+        const dy = dir === "S" ? 1 : dir === "N" ? -1 : 0;
+        ctx.beginPath();
+        ctx.moveTo(entry.x, entry.y);
+        ctx.lineTo(entry.x + dx * connector, entry.y + dy * connector);
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+    drawConnector(40, outerColor);
+    drawConnector(24, midColor);
+    drawConnector(8, innerColor);
+  }
 }
 
 function drawPortalAt(origin, t) {
@@ -5444,7 +5461,8 @@ function drawTowers() {
       ctx.strokeRect(tower.x - 10, tower.y - 10, 20, 20);
       const dir = tower.spikeDir || getSpikeDirection(tower);
       if (dir) {
-        const progress = tower.spikeProgress || 0;
+        const rawProgress = tower.spikeProgress || 0;
+        const progress = rawProgress > 0 ? Math.max(rawProgress, 0.12) : 0;
         const len = (data.spikeRange || 32) * progress;
         const tipX = tower.x + dir.x * len;
         const tipY = tower.y + dir.y * len;
