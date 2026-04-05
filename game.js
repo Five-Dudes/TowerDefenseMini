@@ -4032,13 +4032,17 @@ function updateSpikeTower(tower, dt, stats) {
       if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) continue;
       const px = enemy.x;
       const py = enemy.y;
+      const dx = px - sx;
+      const dy = py - sy;
+      const forward = dx * dir.x + dy * dir.y;
+      if (forward < 0 || forward > limit) continue;
       const t = lineLenSq > 0 ? Math.max(0, Math.min(1, ((px - sx) * (ex - sx) + (py - sy) * (ey - sy)) / lineLenSq)) : 0;
       const cx = sx + (ex - sx) * t;
       const cy = sy + (ey - sy) * t;
       const radius = getEnemyRadius(enemy);
       const dist = Math.hypot(px - cx, py - cy);
       if (dist <= radius + 6) {
-        hits.push({ enemy, dist: t * limit });
+        hits.push({ enemy, dist: forward });
       }
     }
     hits.sort((a, b) => a.dist - b.dist);
@@ -4049,6 +4053,9 @@ function updateSpikeTower(tower, dt, stats) {
     const hitTargets = hits.slice(0, Math.max(1, spikeCount));
     for (const entry of hitTargets) {
       applySpikeEffects(entry.enemy, damage, slow, stun);
+    }
+    if (hitTargets.length > 0) {
+      tower.spikeContactLen = hitTargets[0].dist;
     }
     if (drillCharge > 0 && hitTargets.length > 0) {
       tower.spikeDrillTarget = hitTargets[0].enemy;
@@ -4089,6 +4096,9 @@ function updateSpikeTower(tower, dt, stats) {
       tower.spikeHit = hits > 0;
       tower.spikePhase = "hold";
       tower.spikeHoldTimer = holdTime;
+      if (hits > 0 && tower.spikeContactLen > 0) {
+        tower.spikeProgress = Math.min(1, tower.spikeContactLen / maxLen);
+      }
     }
     return;
   }
@@ -4120,6 +4130,7 @@ function updateSpikeTower(tower, dt, stats) {
       tower.spikeDrillTarget = null;
       tower.spikeDrillTimer = 0;
       tower.spikeDir = null;
+      tower.spikeContactLen = null;
     }
   }
 }
@@ -5501,7 +5512,10 @@ function drawTowers() {
         const maxLen = (stats && stats.spikeRange) || data.spikeRange || 32;
         const rawProgress = tower.spikeProgress || 0;
         const progress = rawProgress > 0 ? Math.max(rawProgress, 0.12) : 0;
-        const len = maxLen * progress;
+        let len = maxLen * progress;
+        if (tower.spikeContactLen && progress > 0) {
+          len = Math.min(len, tower.spikeContactLen);
+        }
         const tipX = tower.x + dir.x * len;
         const tipY = tower.y + dir.y * len;
         ctx.fillStyle = shadeColor(base, 1.1);
