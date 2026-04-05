@@ -4037,7 +4037,7 @@ function updateSpikeTower(tower, dt, stats) {
   }
   if (!dir) return;
   if (phase === "extend") {
-    const next = Math.min(1, progress + dt * extendSpeed);
+    const next = Math.min(1, progress + dt * extendSpeed * 3);
     tower.spikeProgress = next;
     const targets = findTargets();
     const primary = targets.length > 0 ? targets[0] : null;
