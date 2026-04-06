@@ -1710,7 +1710,8 @@ function upgradeTowerByValue(tower, deltaRaw) {
   if (tower.type === "wall" || tower.type === "mine") return;
   if (tower.type === "bomb" && (tower.level || 1) >= state.towerLevelCap) return;
   const current = tower.level || 1;
-  const target = Math.min(state.towerLevelCap, current + delta);
+  const cap = Number.isFinite(state.towerLevelCap) ? state.towerLevelCap : 5;
+  const target = Math.min(cap, current + delta);
   if (target <= current) return;
   const totalCost = getUpgradeCostToLevel(current, target, tower);
   if (!canAfford(totalCost)) {
@@ -7481,9 +7482,7 @@ if (ui.upgradeAllBy) {
     if (!state.jasperEnabled) return;
     const amount = Math.max(1, Number.parseInt((ui.upgradeAllByValue && ui.upgradeAllByValue.value) || "1", 10));
     for (const tower of state.towers) {
-      for (let i = 0; i < amount; i += 1) {
-        upgradeTower(tower);
-      }
+      upgradeTowerByValue(tower, amount);
     }
     updateHud();
   });
