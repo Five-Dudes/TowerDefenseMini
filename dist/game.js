@@ -2657,6 +2657,11 @@ function updateUpgradePanel() {
     if (ui.spikeUpgradeActions) ui.spikeUpgradeActions.classList.add("hidden");
     return;
   }
+  const stats = getTowerStats(tower);
+  const desc = getTowerDescription(tower.type);
+  const nextTier = (tower.level || 1) + 1;
+  const upgradeCost = getUpgradeCost(tower);
+  let upgradeText = "Upgrades: +damage, +range, faster fire, faster bullets.";
   if (tower.type === "floorSpike") {
     const tier = Math.min(tower.level, 5);
     const path = tower.upgradePath || 1;
@@ -2687,11 +2692,6 @@ function updateUpgradePanel() {
       ui.spikePath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
     }
   }
-  const stats = getTowerStats(tower);
-  const desc = getTowerDescription(tower.type);
-  const nextTier = (tower.level || 1) + 1;
-  const upgradeCost = getUpgradeCost(tower);
-  let upgradeText = "Upgrades: +damage, +range, faster fire, faster bullets.";
   const bombMaxed = tower.type === "bomb" && (tower.level || 1) >= state.towerLevelCap;
   if (tower.type === "freeze") {
     upgradeText = "Upgrades: stronger slow + longer range.";
