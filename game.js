@@ -1203,15 +1203,10 @@ function showAlert(title, message, pauseWave = false) {
 }
 
 function handleWaveAlerts(wave) {
-  if (wave === 2) {
+  if (wave === 3) {
     showAlert(
-      "Shade Incoming",
-      "<p>Shade enemies arrive on Wave 4.</p><p>Build <strong>Watch Towers</strong> or <strong>tap shades</strong> to reveal them.</p>"
-    );
-  } else if (wave === 3) {
-    showAlert(
-      "Armored Incoming",
-      "<p>Armored enemies arrive on Wave 5.</p><p><strong>Bomb</strong> and <strong>Laser</strong> towers crack armor fastest.</p>"
+      "Incoming Threats",
+      "<p>Shade enemies arrive on Wave 4.</p><p>Armored enemies arrive on Wave 5.</p><p>Build <strong>Watch Towers</strong> or <strong>tap shades</strong> to reveal them, then use <strong>Bomb</strong> and <strong>Laser</strong> to crack armor.</p>"
     );
   } else if (wave === 4) {
     showAlert(
