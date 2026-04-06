@@ -574,7 +574,7 @@ const towerTypes = {
     cost: 60,
     range: 0,
     rate: 0,
-    damage: 6,
+    damage: 5,
     color: "#f97316",
     slow: 0,
     allowOnPath: true,
@@ -4398,9 +4398,6 @@ function updateSpikeTower(tower, dt, stats) {
       tower.spikeHit = hits > 0;
       tower.spikePhase = "hold";
       tower.spikeHoldTimer = holdTime;
-      if (hits > 0 && tower.spikeContactLen > 0) {
-        tower.spikeProgress = Math.min(1, tower.spikeContactLen / maxLen);
-      }
     }
     return;
   }
