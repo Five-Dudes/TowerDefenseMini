@@ -2965,9 +2965,15 @@ function updateUpgradePanel() {
     }
   }
   applyPathLock(tower);
-  const burnText = stats.fireDps > 0 ? ` | Burn ${stats.fireDps.toFixed(1)}/s (${stats.fireDuration.toFixed(1)}s)` : "";
+  const safeRange = Number.isFinite(stats.range) ? stats.range : 0;
+  const safeRate = Number.isFinite(stats.rate) ? stats.rate : 0;
+  const safeDamage = Number.isFinite(stats.damage) ? stats.damage : 0;
+  const safeSlow = Number.isFinite(stats.slow) ? stats.slow : 0;
+  const safeFireDps = Number.isFinite(stats.fireDps) ? stats.fireDps : 0;
+  const safeFireDuration = Number.isFinite(stats.fireDuration) ? stats.fireDuration : 0;
+  const burnText = safeFireDps > 0 ? ` | Burn ${safeFireDps.toFixed(1)}/s (${safeFireDuration.toFixed(1)}s)` : "";
   const speedText = stats.projectileSpeed ? ` | Shot Spd ${Math.round(stats.projectileSpeed)}` : "";
-  const statLine = `Range ${Math.round(stats.range)} | Rate ${stats.rate.toFixed(2)}s | Damage ${Math.round(stats.damage)}${tower.type === "freeze" ? ` | Slow ${stats.slow.toFixed(2)}` : ""}${speedText}${burnText}`;
+  const statLine = `Range ${Math.round(safeRange)} | Rate ${safeRate.toFixed(2)}s | Damage ${Math.round(safeDamage)}${tower.type === "freeze" ? ` | Slow ${safeSlow.toFixed(2)}` : ""}${speedText}${burnText}`;
   const displayName = getTowerDisplayName(tower);
   const cap = state.towerLevelCap || 5;
   if (bombMaxed) {
@@ -6917,7 +6923,11 @@ function update(dt) {
   updateFlames(simDt);
   updateBeams(simDt);
   updateHud();
-  updateUpgradePanel();
+  try {
+    updateUpgradePanel();
+  } catch (err) {
+    console.error("Upgrade panel error:", err);
+  }
   if (state.lives <= 0) {
     state.waveInProgress = false;
     state.paused = false;
