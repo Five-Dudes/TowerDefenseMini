@@ -50,6 +50,7 @@ const ui = {
   buildLaser: document.getElementById("build-laser"),
   buildFlame: document.getElementById("build-flame"),
   buildDart: document.getElementById("build-dart"),
+  buildFactory: document.getElementById("build-factory"),
   buildTrap: document.getElementById("build-trap"),
   buildSpike: document.getElementById("build-spike"),
   buildMine: document.getElementById("build-mine"),
@@ -84,6 +85,9 @@ const ui = {
   dartUpgradeActions: document.getElementById("dart-upgrade-actions"),
   dartPath1: document.getElementById("dart-path-1"),
   dartPath2: document.getElementById("dart-path-2"),
+  factoryUpgradeActions: document.getElementById("factory-upgrade-actions"),
+  factoryPath1: document.getElementById("factory-path-1"),
+  factoryPath2: document.getElementById("factory-path-2"),
   trapUpgradeActions: document.getElementById("trap-upgrade-actions"),
   trapPath1: document.getElementById("trap-path-1"),
   trapPath2: document.getElementById("trap-path-2"),
@@ -135,6 +139,7 @@ const buildButtons = {
   laser: ui.buildLaser,
   flame: ui.buildFlame,
   dart: ui.buildDart,
+  factory: ui.buildFactory,
   trap: ui.buildTrap,
   spikeTower: ui.buildSpike,
   mine: ui.buildMine,
@@ -158,6 +163,9 @@ const state = {
   wave: 0,
   totalDamage: 0,
   placing: null,
+  dragPlacing: false,
+  dragPlaceKey: null,
+  suppressClick: false,
   towers: [],
   enemies: [],
   projectiles: [],
@@ -188,6 +196,8 @@ const state = {
   difficulty: null,
   infiniteGold: false,
   keyBuffer: "",
+  factoryKillGoldBonus: 0,
+  factoryKillLifeBonus: 0,
   jasperProgress: 0,
   jasperEnabled: false,
   revealStealth: false,
@@ -515,6 +525,15 @@ const towerTypes = {
     poisonDuration: 4,
     projectileSpeed: 380,
     blocksPath: true,
+  },
+  factory: {
+    cost: 120,
+    range: 0,
+    rate: 0,
+    damage: 0,
+    color: "#fbbf24",
+    slow: 0,
+    isFactory: true,
   },
   flame: {
     cost: 105,
@@ -1579,15 +1598,15 @@ function ensureEnemyPath(enemy) {
 
 function placeTower(type, x, y) {
   const data = towerTypes[type];
-  if (!state.gameStarted) return;
-  if (!data) return;
-  if (type === "op" && state.opPlaced) return;
-  if (type === "spikeTower" && !isAdjacentToPath(x, y)) return;
-  if (isOnPath(x, y) && !data.allowOnPath && !data.blocksPath) return;
-  if ((type === "mine" || type === "floorSpike") && !isOnPath(x, y)) return;
-  if (type === "drone" && isOnPath(x, y)) return;
-  if (data.blocksPath && isOnPath(x, y) && state.waveInProgress) return;
-  if (type === "wall" && isOnPath(x, y)) return;
+  if (!state.gameStarted) return false;
+  if (!data) return false;
+  if (type === "op" && state.opPlaced) return false;
+  if (type === "spikeTower" && !isAdjacentToPath(x, y)) return false;
+  if (isOnPath(x, y) && !data.allowOnPath && !data.blocksPath) return false;
+  if ((type === "mine" || type === "floorSpike") && !isOnPath(x, y)) return false;
+  if (type === "drone" && isOnPath(x, y)) return false;
+  if (data.blocksPath && isOnPath(x, y) && state.waveInProgress) return false;
+  if (type === "wall" && isOnPath(x, y)) return false;
   for (const tower of state.towers) {
     const towerData = towerTypes[tower.type];
     if (towerData && towerData.noGridlock) continue;
@@ -1595,7 +1614,7 @@ function placeTower(type, x, y) {
     const towerY = tower.type === "drone" && Number.isFinite(tower.baseY) ? tower.baseY : tower.y;
     const overlap = Math.hypot(towerX - x, towerY - y) < 30;
     if (!overlap) continue;
-    return;
+    return false;
   }
   if (data.blocksPath) {
     const prevPaths = state.pathPoints.length > 0
@@ -1604,26 +1623,26 @@ function placeTower(type, x, y) {
     const cell = worldToCell(x, y);
     const endCell = state.mapEndCell;
     const startCells = state.mapStartCells.length > 0 ? state.mapStartCells : [];
-    if (!endCell) return;
+    if (!endCell) return false;
     if (startCells.some((startCell) => cell.cx === startCell.cx && cell.cy === startCell.cy)
       || (cell.cx === endCell.cx && cell.cy === endCell.cy)) {
-      return;
+      return false;
     }
-    if (!recomputeGlobalPath(cell)) return;
+    if (!recomputeGlobalPath(cell)) return false;
     for (const tower of state.towers) {
       if (tower.type !== "spikeTower") continue;
       if (!isAdjacentToPath(tower.x, tower.y)) {
         state.pathPoints = prevPaths;
         updateEnemyPaths();
         cleanupOffPathFloorSpikes();
-        return;
+        return false;
       }
     }
   }
   const cost = data.cost;
   if (!canAfford(cost)) {
     flashButton(buildButtons[type]);
-    return;
+    return false;
   }
   payCost(cost);
   const tower = {
@@ -1655,6 +1674,9 @@ function placeTower(type, x, y) {
   if (type === "dart") {
     tower.upgradePath = 1;
   }
+  if (type === "factory") {
+    tower.upgradePath = 1;
+  }
   if (type === "freeze") {
     tower.upgradePath = 1;
   }
@@ -1681,6 +1703,7 @@ function placeTower(type, x, y) {
   }
   state.towers.push(tower);
   updateHud();
+  return true;
 }
 
 function getUpgradeBaseCost(tower) {
@@ -1869,6 +1892,13 @@ function getTowerStats(tower) {
   let floorSpikeShotSpeed = 320;
   let floorSpikeShotTtl = 1;
   let flameContinuous = false;
+  let factoryGold = 0;
+  let factoryLife = 0;
+  let factoryInterval = 60;
+  let factoryKillGoldBonus = 0;
+  let factoryKillLifeBonus = 0;
+  let factoryLifeDrop = 0;
+  let factoryGoldDropMult = 0;
 
   if (tower.type === "watch") {
     if (!projectileSpeed) {
@@ -2363,6 +2393,26 @@ function getTowerStats(tower) {
       }
     }
   }
+
+  if (tower.type === "factory") {
+    const path = tower.upgradePath || 1;
+    const tier = Math.min(level, 5);
+    factoryGold = 1;
+    factoryLife = 0;
+    if (path === 1) {
+      if (tier >= 1) factoryGold = 2;
+      if (tier >= 2) factoryGold = 4;
+      if (tier >= 3) factoryKillGoldBonus = 2;
+      if (tier >= 4) factoryLifeDrop = 1;
+      if (tier >= 5) factoryLifeDrop = 5;
+    } else {
+      if (tier >= 1) factoryLife = 1;
+      if (tier >= 2) factoryLife = 2;
+      if (tier >= 3) factoryKillLifeBonus = 1;
+      if (tier >= 4) factoryGoldDropMult = 2;
+      if (tier >= 5) factoryGoldDropMult = 4;
+    }
+  }
   if (tower.type === "flame") {
     const tier = Math.min(tower.level, 5);
     const path = tower.upgradePath || 1;
@@ -2512,6 +2562,13 @@ function getTowerStats(tower) {
     floorSpikeShotDamage,
     floorSpikeShotSpeed,
     floorSpikeShotTtl,
+    factoryGold,
+    factoryLife,
+    factoryInterval,
+    factoryKillGoldBonus,
+    factoryKillLifeBonus,
+    factoryLifeDrop,
+    factoryGoldDropMult,
   };
 }
 
@@ -2529,6 +2586,8 @@ function getTowerDescription(type) {
       return "Piercing beam that hits lines of enemies. Upgrades add burn.";
     case "dart":
       return "Poisons enemies over time.";
+    case "factory":
+      return "Produces gold and life over time.";
     case "flame":
       return "Rapid cone of flames that applies burn.";
     case "trap":
@@ -2556,6 +2615,7 @@ function getTowerDisplayName(tower) {
     bomb: "Bomb Tower",
     laser: "Laser Tower",
     dart: "Dart Tower",
+    factory: "Factory Tower",
     flame: "Flamethrower",
     trap: "Trap Setter",
     spikeTower: "Spike Tower",
@@ -2571,6 +2631,7 @@ function getTowerDisplayName(tower) {
     bomb: "Siegebreaker",
     laser: "Arc Lance",
     dart: "Toxin Lord",
+    factory: "Foundry",
     flame: "Hellstream",
     trap: "Hex Smith",
     spikeTower: "Impaler",
@@ -2602,6 +2663,9 @@ function applyPathLock(tower) {
       break;
     case "dart":
       buttons.push({ btn: ui.dartPath1, path: 1 }, { btn: ui.dartPath2, path: 2 });
+      break;
+    case "factory":
+      buttons.push({ btn: ui.factoryPath1, path: 1 }, { btn: ui.factoryPath2, path: 2 });
       break;
     case "trap":
       buttons.push({ btn: ui.trapPath1, path: 1 }, { btn: ui.trapPath2, path: 2 });
@@ -2645,6 +2709,7 @@ function updateUpgradePanel() {
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
     if (ui.bombUpgradeActions) ui.bombUpgradeActions.classList.add("hidden");
     if (ui.dartUpgradeActions) ui.dartUpgradeActions.classList.add("hidden");
+    if (ui.factoryUpgradeActions) ui.factoryUpgradeActions.classList.add("hidden");
     if (ui.trapUpgradeActions) ui.trapUpgradeActions.classList.add("hidden");
     if (ui.laserUpgradeActions) ui.laserUpgradeActions.classList.add("hidden");
     if (ui.flameUpgradeActions) ui.flameUpgradeActions.classList.add("hidden");
@@ -2663,6 +2728,7 @@ function updateUpgradePanel() {
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
     if (ui.bombUpgradeActions) ui.bombUpgradeActions.classList.add("hidden");
     if (ui.dartUpgradeActions) ui.dartUpgradeActions.classList.add("hidden");
+    if (ui.factoryUpgradeActions) ui.factoryUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
@@ -2680,6 +2746,7 @@ function updateUpgradePanel() {
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
     if (ui.bombUpgradeActions) ui.bombUpgradeActions.classList.add("hidden");
     if (ui.dartUpgradeActions) ui.dartUpgradeActions.classList.add("hidden");
+    if (ui.factoryUpgradeActions) ui.factoryUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
@@ -2696,6 +2763,7 @@ function updateUpgradePanel() {
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
     if (ui.bombUpgradeActions) ui.bombUpgradeActions.classList.add("hidden");
     if (ui.dartUpgradeActions) ui.dartUpgradeActions.classList.add("hidden");
+    if (ui.factoryUpgradeActions) ui.factoryUpgradeActions.classList.add("hidden");
     if (ui.upgradeTargetRow) ui.upgradeTargetRow.classList.add("hidden");
     if (ui.upgradeTargetAction) ui.upgradeTargetAction.classList.add("hidden");
     if (ui.targetingRow) ui.targetingRow.classList.add("hidden");
@@ -2873,6 +2941,36 @@ function updateUpgradePanel() {
       ui.dartPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
     }
   }
+  if (tower.type === "factory") {
+    const tier = Math.min(tower.level, 5);
+    const path = tower.upgradePath || 1;
+    const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "give 2 gold",
+      "give 4 gold",
+      "more gold on kills",
+      "random life drop",
+      "bigger life drop",
+    ];
+    const path2Upgrades = [
+      "give 1 life",
+      "give 2 lives",
+      "life on kill",
+      "random x2 gold drop",
+      "random x4 gold drop",
+    ];
+    upgradeText = [
+      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
+    ][0];
+    if (ui.factoryPath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      ui.factoryPath1.textContent = `Path 1 (${p1Tier}/5): MONEY MONEY MONEY`;
+    }
+    if (ui.factoryPath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      ui.factoryPath2.textContent = `Path 2 (${p2Tier}/5): Incubator`;
+    }
+  }
   if (tower.type === "drone") {
     const tier = Math.min(tower.level, 5);
     const path = tower.upgradePath || 1;
@@ -3044,6 +3142,9 @@ function updateUpgradePanel() {
   if (ui.dartUpgradeActions) {
     ui.dartUpgradeActions.classList.toggle("hidden", tower.type !== "dart");
   }
+  if (ui.factoryUpgradeActions) {
+    ui.factoryUpgradeActions.classList.toggle("hidden", tower.type !== "factory");
+  }
   if (ui.trapUpgradeActions) {
     ui.trapUpgradeActions.classList.toggle("hidden", tower.type !== "trap");
   }
@@ -3085,6 +3186,10 @@ function updateUpgradePanel() {
 }
 
 function handleClick(event) {
+  if (state.suppressClick) {
+    state.suppressClick = false;
+    return;
+  }
   const rect = canvas.getBoundingClientRect();
   const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
   const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
@@ -3164,6 +3269,18 @@ function handleClick(event) {
       state.placing = null;
     }
   }
+}
+
+function tryDragPlaceAt(x, y) {
+  if (!state.placing) return;
+  const snapped = snapToGrid(x, y);
+  const cell = worldToCell(snapped.x, snapped.y);
+  const key = cellKey(cell.cx, cell.cy);
+  if (state.dragPlaceKey === key) return;
+  state.dragPlaceKey = key;
+  const towersHere = state.towers.filter((tower) => Math.hypot(tower.x - snapped.x, tower.y - snapped.y) < 20 && !tower.isMini);
+  if (towersHere.length > 0) return;
+  placeTower(state.placing, snapped.x, snapped.y);
 }
 
 function emitFreezeGas(tower, enemy, stats) {
@@ -4657,11 +4774,49 @@ function updateTowers(dt) {
   const poisonTower = state.towers.find((tower) => tower.type === "dart" && (tower.level || 1) >= 5 && tower.upgradePath === 1);
   state.globalPoisonDps = poisonTower ? 3 : 0;
   state.globalPoisonDuration = poisonTower ? 2.5 : 0;
+  state.factoryKillGoldBonus = 0;
+  state.factoryKillLifeBonus = 0;
   for (const tower of state.towers) {
     const stats = getTowerStats(tower);
     if (!stats) continue;
     const data = stats.data;
     if (tower.disabled || tower.stunTimer > 0) continue;
+    if (data.isFactory) {
+      if (!tower.factoryDisabled) {
+        state.factoryKillGoldBonus += stats.factoryKillGoldBonus || 0;
+        state.factoryKillLifeBonus += stats.factoryKillLifeBonus || 0;
+        const interval = Math.max(10, stats.factoryInterval || 60);
+        tower.factoryTimer = Number.isFinite(tower.factoryTimer) ? tower.factoryTimer : interval;
+        tower.factoryTimer -= dt;
+        if (tower.factoryTimer <= 0) {
+          const goldGain = stats.factoryGold || 0;
+          const lifeGain = stats.factoryLife || 0;
+          if (goldGain > 0) awardGold(goldGain);
+          if (lifeGain > 0) state.lives = Math.min(state.maxLives, state.lives + lifeGain);
+          updateHud();
+          tower.factoryTimer += interval;
+        }
+        if ((stats.factoryLifeDrop || stats.factoryGoldDropMult) && !state.nukeSmoke) {
+          const dropInterval = 120;
+          tower.factoryDropTimer = Number.isFinite(tower.factoryDropTimer) ? tower.factoryDropTimer : dropInterval;
+          tower.factoryDropTimer -= dt;
+          if (tower.factoryDropTimer <= 0) {
+            const candidates = state.enemies.filter((enemy) => enemy.hp > 0 && !enemy.escaped);
+            if (candidates.length > 0) {
+              const pick = candidates[Math.floor(Math.random() * candidates.length)];
+              if (stats.factoryLifeDrop) {
+                pick.dropLives = Math.max(pick.dropLives || 0, stats.factoryLifeDrop);
+              }
+              if (stats.factoryGoldDropMult) {
+                pick.dropGoldMult = Math.max(pick.dropGoldMult || 0, stats.factoryGoldDropMult);
+              }
+              tower.factoryDropTimer += dropInterval;
+            }
+          }
+        }
+      }
+      continue;
+    }
     if (data.isMine || data.isFloorSpike || data.blocksPath) continue;
     if (tower.type === "spikeTower") continue;
     if (tower.type === "drone" && stats.droneBombRate > 0) {
@@ -5154,6 +5309,9 @@ function updateEnemies(dt) {
       if (enemy.pathIndex >= pathPoints.length - 1) {
         const hit = enemy.castleDamage || 1;
         state.lives = Math.max(0, state.lives - hit);
+        if (enemy.type === "saboteur") {
+          disableFactories();
+        }
         enemy.escaped = true;
         enemy.hp = 0;
       }
@@ -5164,6 +5322,13 @@ function updateEnemies(dt) {
       enemy.y += vy;
       enemy.facing = Math.atan2(vy, vx);
     }
+  }
+}
+
+function disableFactories() {
+  for (const tower of state.towers) {
+    if (tower.type !== "factory") continue;
+    tower.factoryDisabled = true;
   }
 }
 
@@ -5383,6 +5548,8 @@ function applyAntiHeal(enemy, duration) {
   const time = Math.max(0, duration || 0);
   if (time <= 0) return;
   enemy.antiHealTimer = Math.max(enemy.antiHealTimer || 0, time);
+  enemy.tempBuffTimer = 0;
+  enemy.buffed = false;
 }
 
 function applyExplosionDamage(enemy, amount) {
@@ -5450,6 +5617,10 @@ function handleEnemyDeath(enemy) {
   if (enemy.deadProcessed) return;
   enemy.deadProcessed = true;
   if (enemy.escaped) return;
+  const bonusGold = state.factoryKillGoldBonus || 0;
+  const bonusLives = state.factoryKillLifeBonus || 0;
+  const dropLives = enemy.dropLives || 0;
+  const dropGoldMult = enemy.dropGoldMult || 0;
   if (enemy.type === "buffer") {
     const radius = enemy.buffRadius || grid.size * 2.4;
     const healColor = "rgba(34, 197, 94, 0.45)";
@@ -5523,7 +5694,16 @@ function handleEnemyDeath(enemy) {
     spawnSplitEnemy(enemy, nextTier);
     spawnSplitEnemy(enemy, nextTier);
   }
-  awardGold(8);
+  const baseGold = 8 + bonusGold;
+  const goldMult = dropGoldMult && dropGoldMult > 1 ? dropGoldMult : 1;
+  awardGold(baseGold * goldMult);
+  if (bonusLives > 0) {
+    state.lives = Math.min(state.maxLives, state.lives + bonusLives);
+  }
+  if (dropLives > 0) {
+    state.lives = Math.min(state.maxLives, state.lives + dropLives);
+  }
+  updateHud();
 }
 
 function spawnArmorShatter(x, y, count = 12) {
@@ -6294,6 +6474,21 @@ function drawTowers() {
           ctx.fill();
         }
       }
+    } else if (tower.type === "factory") {
+      ctx.fillStyle = base;
+      ctx.fillRect(tower.x - 12, tower.y - 12, 24, 24);
+      ctx.strokeStyle = shadeColor(base, 0.5);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(tower.x - 12, tower.y - 12, 24, 24);
+      ctx.fillStyle = "rgba(15, 23, 42, 0.7)";
+      ctx.beginPath();
+      ctx.arc(tower.x, tower.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(250, 204, 21, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(tower.x, tower.y, 9, 0, Math.PI * 2);
+      ctx.stroke();
     } else if (tower.type === "op") {
       ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
       ctx.beginPath();
@@ -7139,6 +7334,9 @@ canvas.addEventListener("mousemove", (event) => {
     state.draggingDrone.x = state.mouse.x;
     state.draggingDrone.y = state.mouse.y;
   }
+  if (state.dragPlacing) {
+    tryDragPlaceAt(state.mouse.x, state.mouse.y);
+  }
 });
 
 ui.buildWatch.addEventListener("click", () => {
@@ -7206,6 +7404,15 @@ ui.buildDart.addEventListener("click", () => {
     return;
   }
   togglePlacing("dart");
+});
+
+ui.buildFactory.addEventListener("click", () => {
+  const cost = towerTypes.factory.cost;
+  if (!canAfford(cost)) {
+    flashButton(buildButtons.factory);
+    return;
+  }
+  togglePlacing("factory");
 });
 
 ui.buildTrap.addEventListener("click", () => {
@@ -8160,6 +8367,15 @@ canvas.addEventListener("dblclick", () => {
 });
 
 canvas.addEventListener("mousedown", (event) => {
+  if (event.button === 0 && state.placing) {
+    state.dragPlacing = true;
+    state.dragPlaceKey = null;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    tryDragPlaceAt(x, y);
+    return;
+  }
   if (!state.infiniteGold) return;
   const rect = canvas.getBoundingClientRect();
   const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
@@ -8181,6 +8397,11 @@ canvas.addEventListener("mousedown", (event) => {
 });
 
 canvas.addEventListener("mouseup", () => {
+  if (state.dragPlacing) {
+    state.dragPlacing = false;
+    state.suppressClick = true;
+    state.dragPlaceKey = null;
+  }
   if (state.draggingDrone) {
     state.draggingDrone.forceReturn = true;
     state.draggingDrone = null;

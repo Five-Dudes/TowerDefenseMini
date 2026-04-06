@@ -313,6 +313,10 @@ button:focus-visible {
   background: linear-gradient(120deg, rgba(96, 165, 250, 0.2), rgba(129, 140, 248, 0.2));
 }
 
+.btn-factory {
+  background: linear-gradient(120deg, rgba(250, 204, 21, 0.22), rgba(234, 179, 8, 0.2));
+}
+
 .btn-flame {
   background: linear-gradient(120deg, rgba(251, 146, 60, 0.28), rgba(249, 115, 22, 0.22));
 }
