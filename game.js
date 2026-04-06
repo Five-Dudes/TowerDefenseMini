@@ -4871,7 +4871,12 @@ function spawnBroodlets(origin, count) {
 function updateEnemies(dt) {
   for (const enemy of state.enemies) {
     enemy.umbrellaShielded = false;
-    enemy.buffed = false;
+    if (enemy.tempBuffTimer > 0) {
+      enemy.tempBuffTimer = Math.max(0, enemy.tempBuffTimer - dt);
+      enemy.buffed = true;
+    } else {
+      enemy.buffed = false;
+    }
   }
   const umbrellas = state.enemies.filter((enemy) => enemy.type === "aegis" && enemy.hp > 0);
   if (umbrellas.length > 0) {
@@ -5339,6 +5344,26 @@ function handleEnemyDeath(enemy) {
   if (enemy.deadProcessed) return;
   enemy.deadProcessed = true;
   if (enemy.escaped) return;
+  if (enemy.type === "buffer") {
+    const radius = enemy.buffRadius || grid.size * 2.4;
+    const healColor = "rgba(34, 197, 94, 0.45)";
+    state.explosions.push({
+      x: enemy.x,
+      y: enemy.y,
+      radius,
+      ttl: 0.5,
+      color: healColor,
+    });
+    for (const ally of state.enemies) {
+      if (ally === enemy || ally.hp <= 0) continue;
+      const dist = Math.hypot(ally.x - enemy.x, ally.y - enemy.y);
+      if (dist > radius) continue;
+      const healAmount = Math.min(40, Math.max(8, ally.maxHp * 0.15));
+      ally.hp = Math.min(ally.maxHp, ally.hp + healAmount);
+      ally.tempBuffTimer = Math.max(ally.tempBuffTimer || 0, 3);
+      ally.buffed = true;
+    }
+  }
   if (enemy.type === "diamond" || enemy.type === "boss_diamond") {
     const dropType = Math.random() < 0.5 ? "heavy" : "speedy";
     const childTier = Math.max(1, enemy.tier - 1);
