@@ -4260,8 +4260,8 @@ function triggerSpikeTestExtend() {
 function hasEnemyInSpikeLane(tower, range) {
   const dir = tower.spikeDir || getSpikeDirection(tower);
   if (!dir) return false;
-  const limit = range + grid.size * 0.6;
-  const backAllowance = -grid.size * 0.2;
+  const limit = range;
+  const backAllowance = 0;
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
     if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
@@ -4355,7 +4355,7 @@ function updateSpikeTower(tower, dt, stats) {
       const cy = sy + (ey - sy) * t;
       const radius = getEnemyRadius(enemy);
       const dist = Math.hypot(px - cx, py - cy);
-      if (dist <= radius + 6) {
+      if (dist <= radius) {
         hits.push({ enemy, dist: forward });
       }
     }
@@ -4379,7 +4379,7 @@ function updateSpikeTower(tower, dt, stats) {
   };
   if (phase === "idle") {
     if (state.enemies.length === 0) return;
-    const limit = maxLen + grid.size;
+    const limit = maxLen;
     let nearby = false;
     for (const enemy of state.enemies) {
       if (enemy.hp <= 0) continue;
@@ -4741,12 +4741,22 @@ function isBlockedBySpike(enemy) {
       || towerTypes.spikeTower.spikeRange
       || 32;
     const len = range * Math.min(1, Math.max(0, progress));
-    const dx = enemy.x - tower.x;
-    const dy = enemy.y - tower.y;
+    const sx = tower.x;
+    const sy = tower.y;
+    const ex = tower.x + dir.x * len;
+    const ey = tower.y + dir.y * len;
+    const lineLenSq = (ex - sx) * (ex - sx) + (ey - sy) * (ey - sy);
+    const px = enemy.x;
+    const py = enemy.y;
+    const dx = px - sx;
+    const dy = py - sy;
     const forward = dx * dir.x + dy * dir.y;
-    if (forward <= 0 || forward > len + radius) continue;
-    const side = Math.abs(dir.x ? dy : dx);
-    if (side <= getSpikeLaneHalfWidth() + radius * 0.4) {
+    if (forward < 0 || forward > len) continue;
+    const t = lineLenSq > 0 ? Math.max(0, Math.min(1, ((px - sx) * (ex - sx) + (py - sy) * (ey - sy)) / lineLenSq)) : 0;
+    const cx = sx + (ex - sx) * t;
+    const cy = sy + (ey - sy) * t;
+    const dist = Math.hypot(px - cx, py - cy);
+    if (dist <= radius) {
       return true;
     }
   }
