@@ -1701,6 +1701,35 @@ function upgradeTower(tower) {
   updateHud();
 }
 
+function upgradeTowerByValue(tower, deltaRaw) {
+  const delta = Math.max(1, Math.floor(deltaRaw || 1));
+  if (delta <= 1) {
+    upgradeTower(tower);
+    return;
+  }
+  if (tower.type === "wall" || tower.type === "mine") return;
+  if (tower.type === "bomb" && (tower.level || 1) >= state.towerLevelCap) return;
+  const current = tower.level || 1;
+  const target = Math.min(state.towerLevelCap, current + delta);
+  if (target <= current) return;
+  const totalCost = getUpgradeCostToLevel(current, target, tower);
+  if (!canAfford(totalCost)) {
+    flashButton(ui.upgradePanel);
+    return;
+  }
+  payCost(totalCost);
+  tower.level = target;
+  if (tower.type === "bomb" && tower.level >= 5 && !tower.bombNukeGranted) {
+    tower.bombNukeGranted = true;
+    state.nukeCharges += 1;
+  }
+  if (tower.type === "drone") {
+    const stats = getTowerStats(tower);
+    if (stats) ensureDroneMinis(tower, stats);
+  }
+  updateHud();
+}
+
 function getTowerStats(tower) {
   const data = towerTypes[tower.type];
   if (!data) return null;
@@ -7058,7 +7087,12 @@ if (ui.upgradePanel) {
     const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : undefined;
     if (tag === "input" || tag === "button" || tag === "select" || tag === "label") return;
     if (state.selectedTower) {
-      upgradeTower(state.selectedTower);
+      const delta = ui.upgradeTarget ? Number(ui.upgradeTarget.value) : 1;
+      if (Number.isFinite(delta) && delta > 1) {
+        upgradeTowerByValue(state.selectedTower, delta);
+      } else {
+        upgradeTower(state.selectedTower);
+      }
     }
   });
 }
@@ -7071,27 +7105,9 @@ if (ui.upgradeTo) {
     if (tower.type === "wall" || tower.type === "mine") return;
     if (tower.type === "bomb" && (tower.level || 1) >= state.towerLevelCap) return;
     const current = tower.level || 1;
-    const targetRaw = Number.parseInt((ui.upgradeTarget ? ui.upgradeTarget.value : undefined) || "1", 10);
+    const targetRaw = Number(ui.upgradeTarget ? ui.upgradeTarget.value : 1);
     if (!Number.isFinite(targetRaw)) return;
-    const delta = Math.max(1, targetRaw);
-    const target = Math.min(state.towerLevelCap, current + delta);
-    if (target <= current) return;
-    const totalCost = getUpgradeCostToLevel(current, target, tower);
-    if (!canAfford(totalCost)) {
-      flashButton(ui.upgradeTo);
-      return;
-    }
-    payCost(totalCost);
-    tower.level = target;
-    if (tower.type === "bomb" && tower.level >= 5 && !tower.bombNukeGranted) {
-      tower.bombNukeGranted = true;
-      state.nukeCharges += 1;
-    }
-    if (tower.type === "drone") {
-      const stats = getTowerStats(tower);
-      if (stats) ensureDroneMinis(tower, stats);
-    }
-    updateHud();
+    upgradeTowerByValue(tower, targetRaw);
     updateUpgradePanel();
   });
 }
