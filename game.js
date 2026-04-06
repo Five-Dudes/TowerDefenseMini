@@ -1251,7 +1251,7 @@ function handleWaveAlerts(wave) {
     showAlert("Wave 1 Briefing", "<p><strong>Grunts</strong> arrive in Wave 1. Place basic towers early.</p>");
     return;
   }
-  const unlocks = waveUnlocks.filter((entry) => entry.wave + 1 === wave);
+  const unlocks = waveUnlocks.filter((entry) => entry.wave !== 1 && entry.wave + 1 === wave);
   if (unlocks.length === 0) return;
   const lines = unlocks.map((entry) => `<p><strong>${entry.title}</strong>: ${entry.desc}</p>`);
   showAlert("New Intel", lines.join(""));
