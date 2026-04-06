@@ -3019,8 +3019,11 @@ function handleClick(event) {
   for (const enemy of state.enemies) {
     const radius = enemy.type === "boss" ? 20 : enemy.type === "heavy" ? 16 : 12;
     if (Math.hypot(enemy.x - x, enemy.y - y) <= radius + 4) {
-      enemy.revealed = true;
-      return;
+      if (enemy.stealth) {
+        enemy.revealed = true;
+        return;
+      }
+      break;
     }
   }
 
@@ -7479,7 +7482,10 @@ if (ui.tutorialModal) {
 
 if (ui.openJasper) {
   ui.openJasper.addEventListener("click", () => {
-    if (!state.jasperEnabled) return;
+    if (!state.easterUnlocked) return;
+    if (!state.jasperEnabled) {
+      setJasperEnabled(true);
+    }
     if (ui.jasperModal) ui.jasperModal.classList.remove("hidden");
   });
 }
@@ -7830,7 +7836,7 @@ function unlockFullEncyclopedia() {
 
 function setJasperEnabled(enabled) {
   state.jasperEnabled = enabled;
-  if (ui.openJasper) ui.openJasper.classList.toggle("hidden", !enabled);
+  if (ui.openJasper) ui.openJasper.classList.toggle("hidden", !state.easterUnlocked);
   if (ui.jasperControls) ui.jasperControls.classList.toggle("hidden", !enabled);
   if (!enabled && ui.jasperModal) {
     ui.jasperModal.classList.add("hidden");
