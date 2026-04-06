@@ -102,7 +102,7 @@ body {
 
 .play {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: 6px;
   margin-top: 6px;
   align-items: start;
