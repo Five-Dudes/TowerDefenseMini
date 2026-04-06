@@ -4741,8 +4741,10 @@ function updateSpikeTowers(dt) {
 function updateFloorSpikes(dt) {
   const data = towerTypes.floorSpike;
   if (!data) return;
+  if (!Number.isFinite(dt) || dt <= 0) return;
   for (const spike of state.towers) {
     if (spike.type !== "floorSpike") continue;
+    try {
     const stats = getTowerStats(spike);
     const damage = (stats && stats.floorSpikeDamage) || data.damage || 0;
     const triggerRadius = (stats && stats.floorSpikeTriggerRadius) || data.triggerRadius || 18;
@@ -4848,6 +4850,9 @@ function updateFloorSpikes(dt) {
         spike.spikeHit = false;
         spike.isFiery = false;
       }
+    }
+    } catch (err) {
+      console.error("Floor spike error:", err);
     }
   }
 }
