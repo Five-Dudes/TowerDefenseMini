@@ -598,7 +598,7 @@ const towerTypes = {
   op: {
     cost: 0,
     range: 560,
-    rate: 0.02,
+    rate: 0,
     damage: 9999,
     color: "#fde047",
     slow: 0,

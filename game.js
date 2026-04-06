@@ -598,7 +598,7 @@ const towerTypes = {
   op: {
     cost: 0,
     range: 560,
-    rate: 0.02,
+    rate: 0,
     damage: 9999,
     color: "#fde047",
     slow: 0,
@@ -4680,12 +4680,6 @@ function updateFloorSpikes(dt) {
         spike.spikeProgress = 0;
         spike.spikeHit = false;
         spike.spikeShot = false;
-      }
-      continue;
-    }
-    if (tower.type === "flame" && stats.flameContinuous) {
-      if (target) {
-        fireFlameCone(tower, target, stats);
       }
       continue;
     }
