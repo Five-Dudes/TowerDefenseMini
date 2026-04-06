@@ -3701,6 +3701,9 @@ function updateProjectiles(dt) {
         if (!proj.target.darkMatter && proj.poisonDuration > 0 && proj.poisonDps > 0) {
           proj.target.dotTimer = Math.max(proj.target.dotTimer, proj.poisonDuration);
           proj.target.dotDps = Math.max(proj.target.dotDps, proj.poisonDps);
+          if (proj.sourceType === "dart") {
+            applyAntiHeal(proj.target, Math.max(2, proj.poisonDuration * 0.8));
+          }
           if (proj.embrittlementPercent > 0) {
             proj.target.embrittleTimer = Math.max(proj.target.embrittleTimer, proj.poisonDuration);
             proj.target.embrittleMultiplier = Math.max(proj.target.embrittleMultiplier || 1, 1 + proj.embrittlementPercent);
@@ -3717,6 +3720,9 @@ function updateProjectiles(dt) {
               if (dist <= proj.poisonRadius) {
                 splash.dotTimer = Math.max(splash.dotTimer, proj.poisonDuration * 0.8);
                 splash.dotDps = Math.max(splash.dotDps, proj.poisonDps * 0.7);
+                if (proj.sourceType === "dart") {
+                  applyAntiHeal(splash, Math.max(2, proj.poisonDuration * 0.6));
+                }
               }
             }
           }
@@ -3730,6 +3736,9 @@ function updateProjectiles(dt) {
               if (dist <= radius) {
                 splash.dotTimer = Math.max(splash.dotTimer, proj.poisonDuration * 0.7);
                 splash.dotDps = Math.max(splash.dotDps, proj.poisonDps * 0.6);
+                if (proj.sourceType === "dart") {
+                  applyAntiHeal(splash, Math.max(2, proj.poisonDuration * 0.6));
+                }
               }
             }
           }
@@ -4877,6 +4886,12 @@ function updateEnemies(dt) {
     } else {
       enemy.buffed = false;
     }
+    if (enemy.antiHealTimer > 0) {
+      enemy.antiHealTimer = Math.max(0, enemy.antiHealTimer - dt);
+    }
+    if (enemy.healFlashTimer > 0) {
+      enemy.healFlashTimer = Math.max(0, enemy.healFlashTimer - dt);
+    }
   }
   const umbrellas = state.enemies.filter((enemy) => enemy.type === "aegis" && enemy.hp > 0);
   if (umbrellas.length > 0) {
@@ -4900,9 +4915,12 @@ function updateEnemies(dt) {
         const radius = buffer.buffRadius || grid.size * 2.4;
         const dist = Math.hypot(enemy.x - buffer.x, enemy.y - buffer.y);
         if (dist <= radius) {
-          enemy.buffed = true;
-          if (enemy.hp < enemy.maxHp) {
-            enemy.hp = Math.min(enemy.maxHp, enemy.hp + (buffer.healRate || 0) * dt);
+          if ((enemy.antiHealTimer || 0) <= 0) {
+            enemy.buffed = true;
+            if (enemy.hp < enemy.maxHp) {
+              enemy.hp = Math.min(enemy.maxHp, enemy.hp + (buffer.healRate || 0) * dt);
+              enemy.healFlashTimer = Math.max(enemy.healFlashTimer || 0, 0.4);
+            }
           }
           break;
         }
@@ -5279,6 +5297,13 @@ function applyDamage(enemy, amount) {
   }
 }
 
+function applyAntiHeal(enemy, duration) {
+  if (!enemy) return;
+  const time = Math.max(0, duration || 0);
+  if (time <= 0) return;
+  enemy.antiHealTimer = Math.max(enemy.antiHealTimer || 0, time);
+}
+
 function applyExplosionDamage(enemy, amount) {
   if (enemy.umbrellaShielded) return;
   if (enemy.immuneExplosion) return;
@@ -5357,12 +5382,15 @@ function handleEnemyDeath(enemy) {
     for (const ally of state.enemies) {
       if (ally === enemy || ally.hp <= 0) continue;
       const dist = Math.hypot(ally.x - enemy.x, ally.y - enemy.y);
-      if (dist > radius) continue;
-      const healAmount = Math.min(40, Math.max(8, ally.maxHp * 0.15));
+    if (dist > radius) continue;
+    const healAmount = Math.min(40, Math.max(8, ally.maxHp * 0.15));
+    if ((ally.antiHealTimer || 0) <= 0) {
       ally.hp = Math.min(ally.maxHp, ally.hp + healAmount);
       ally.tempBuffTimer = Math.max(ally.tempBuffTimer || 0, 3);
       ally.buffed = true;
+      ally.healFlashTimer = Math.max(ally.healFlashTimer || 0, 0.6);
     }
+  }
   }
   if (enemy.type === "diamond" || enemy.type === "boss_diamond") {
     const dropType = Math.random() < 0.5 ? "heavy" : "speedy";
@@ -6559,6 +6587,23 @@ function drawEnemies() {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (enemy.buffed) {
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (enemy.healFlashTimer > 0) {
+      const pulse = 2 + Math.sin(performance.now() / 120) * 2;
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 7 + pulse, 0, Math.PI * 2);
       ctx.stroke();
     }
 
