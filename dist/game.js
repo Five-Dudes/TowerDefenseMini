@@ -7708,7 +7708,6 @@ const selectDifficulty = (difficulty) => {
   if (ui.gameOver) ui.gameOver.classList.add("hidden");
   recomputeGlobalPath();
   updateHud();
-  handleWaveAlerts(1);
 };
 if (titleScreen) {
   const buttons = titleScreen.querySelectorAll("[data-difficulty]");
