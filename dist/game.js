@@ -1215,7 +1215,6 @@ function startWave() {
   }
   state.spawnTimer = 0;
   updateHud();
-  handleWaveAlerts(state.wave);
 }
 
 function showAlert(title, message, pauseWave = false) {
@@ -5657,6 +5656,7 @@ function updateSpawner(dt) {
     if (state.radioactiveWave === state.wave) {
       state.radioactiveWave = null;
     }
+    handleWaveAlerts(state.wave + 1);
   }
 }
 
