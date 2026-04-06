@@ -4525,10 +4525,7 @@ function updateTowers(dt) {
     }
     tower.cooldown = Math.max(0, tower.cooldown - dt);
     const range = stats.range;
-    let target = selectTarget(tower, stats);
-    if (!target) {
-      target = getClosestEnemyTarget(tower.x, tower.y);
-    }
+    const target = selectTarget(tower, stats);
     if (target) {
       tower.aimAngle = Math.atan2(target.y - tower.y, target.x - tower.x);
     }
