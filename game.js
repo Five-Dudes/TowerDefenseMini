@@ -114,6 +114,12 @@ const ui = {
   spawnEnemyDarkMatter: document.getElementById("spawn-enemy-darkmatter"),
   spawnEnemyOnFlame: document.getElementById("spawn-enemy-onflame"),
   spawnEnemyPoisoned: document.getElementById("spawn-enemy-poisoned"),
+  upgradeAllByValue: document.getElementById("upgrade-all-by-value"),
+  upgradeAllBy: document.getElementById("upgrade-all-by"),
+  jasperInfiniteFunds: document.getElementById("jasper-infinite-funds"),
+  jasperSetGold: document.getElementById("jasper-set-gold"),
+  jasperSetLives: document.getElementById("jasper-set-lives"),
+  jasperApplyStats: document.getElementById("jasper-apply-stats"),
   gameOver: document.getElementById("game-over"),
   sixSevenOverlay: document.getElementById("sixseven-overlay"),
   sixSevenGif: document.getElementById("sixseven-gif"),
@@ -183,6 +189,7 @@ const state = {
   infiniteGold: false,
   keyBuffer: "",
   jasperProgress: 0,
+  jasperEnabled: false,
   revealStealth: false,
   autoWave: false,
   waveSpeed: 1,
@@ -826,6 +833,9 @@ function updateHud() {
   }
   if (ui.halfCash) {
     ui.halfCash.textContent = `Half Cash: ${state.halfCash ? "On" : "Off"}`;
+  }
+  if (ui.jasperInfiniteFunds) {
+    ui.jasperInfiniteFunds.textContent = `Infinite Funds: ${state.infiniteGold ? "On" : "Off"}`;
   }
 }
 
@@ -1473,6 +1483,7 @@ function createEnemy(type, options = {}) {
     troll: isTroll,
     backtrackTimer: 0,
     backtrackCooldown: isTroll ? 1.5 : 0,
+    backtrackSpeedMult: isTroll ? 2.4 : 1,
     buffer: isBuffer,
     buffRadius: isBuffer ? grid.size * 2.4 : 0,
     buffed: false,
@@ -1590,6 +1601,12 @@ function placeTower(type, x, y) {
     tower.spikeProgress = 0;
     tower.spikeHoldTimer = 0;
     tower.spikeDir = getSpikeDirection(tower);
+  }
+  if (type === "floorSpike") {
+    tower.upgradePath = 1;
+    tower.spikePhase = "idle";
+    tower.spikeProgress = 0;
+    tower.spikeHoldTimer = 0;
   }
   if (type === "dart") {
     tower.upgradePath = 1;
@@ -1765,6 +1782,19 @@ function getTowerStats(tower) {
   let spikeWave = false;
   let spikeWaveRadius = 0;
   let spikeWaveSlow = 0;
+  let floorSpikeDamage = data.damage;
+  let floorSpikeExtendSpeed = data.spikeExtendSpeed;
+  let floorSpikeRetractSpeed = data.spikeRetractSpeed;
+  let floorSpikeHold = data.spikeHold;
+  let floorSpikeTriggerRadius = data.triggerRadius;
+  let floorSpikeBurnDps = 0;
+  let floorSpikeBurnDelay = 999;
+  let floorSpikeShooter = false;
+  let floorSpikeShotCount = 1;
+  let floorSpikeShotDamage = 0;
+  let floorSpikeShotSpeed = 320;
+  let floorSpikeShotTtl = 1;
+  let flameContinuous = false;
 
   if (tower.type === "watch") {
     if (!projectileSpeed) {
@@ -1872,6 +1902,7 @@ function getTowerStats(tower) {
       }
     }
     if (tower.type === "flame") {
+      flameContinuous = true;
       const tier = Math.min(level, 5);
       const path = tower.upgradePath || 1;
       if (path === 1) {
@@ -2291,6 +2322,7 @@ function getTowerStats(tower) {
     laserRechargeTime,
     laserStun,
     laserInfinite,
+    flameContinuous,
     canHitStealth,
     droneGuns,
     droneMiniCount,
@@ -2334,6 +2366,18 @@ function getTowerStats(tower) {
     spikeWave,
     spikeWaveRadius,
     spikeWaveSlow,
+    floorSpikeDamage,
+    floorSpikeExtendSpeed,
+    floorSpikeRetractSpeed,
+    floorSpikeHold,
+    floorSpikeTriggerRadius,
+    floorSpikeBurnDps,
+    floorSpikeBurnDelay,
+    floorSpikeShooter,
+    floorSpikeShotCount,
+    floorSpikeShotDamage,
+    floorSpikeShotSpeed,
+    floorSpikeShotTtl,
   };
 }
 
@@ -2440,6 +2484,9 @@ function applyPathLock(tower) {
     case "spikeTower":
       buttons.push({ btn: ui.spikePath1, path: 1 }, { btn: ui.spikePath2, path: 2 });
       break;
+    case "floorSpike":
+      buttons.push({ btn: ui.spikePath1, path: 1 }, { btn: ui.spikePath2, path: 2 });
+      break;
     default:
       break;
   }
@@ -2509,7 +2556,7 @@ function updateUpgradePanel() {
     if (ui.spikeUpgradeActions) ui.spikeUpgradeActions.classList.add("hidden");
     return;
   }
-  if (tower.type === "mine" || tower.type === "floorSpike") {
+  if (tower.type === "mine") {
     ui.upgradeDetails.textContent = getTowerDescription(tower.type);
     if (ui.watchUpgradeActions) ui.watchUpgradeActions.classList.add("hidden");
     if (ui.freezeUpgradeActions) ui.freezeUpgradeActions.classList.add("hidden");
@@ -2524,6 +2571,96 @@ function updateUpgradePanel() {
     if (ui.droneUpgradeActions) ui.droneUpgradeActions.classList.add("hidden");
     if (ui.spikeUpgradeActions) ui.spikeUpgradeActions.classList.add("hidden");
     return;
+  }
+  if (tower.type === "floorSpike") {
+    const tier = Math.min(tower.level, 5);
+    const path = tower.upgradePath || 1;
+    const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "more spikes (faster damage)",
+      "even more spikes",
+      "tar pit burn",
+      "magma burn speed",
+      "sharper spikes",
+    ];
+    const path2Upgrades = [
+      "sharper spikes",
+      "even sharper spikes",
+      "spike shooter",
+      "more spikes",
+      "more spikes (faster)",
+    ];
+    upgradeText = `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`;
+    if (ui.spikePath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
+      ui.spikePath1.textContent = `Path 1 (${p1Tier}/5): ${nextP1}`;
+    }
+    if (tower.type === "floorSpike") {
+      const tier = Math.min(level, 5);
+      const path = tower.upgradePath || 1;
+      floorSpikeDamage = damage;
+      floorSpikeExtendSpeed = data.spikeExtendSpeed || 10;
+      floorSpikeRetractSpeed = data.spikeRetractSpeed || 7;
+      floorSpikeHold = data.spikeHold || 0.2;
+      floorSpikeTriggerRadius = data.triggerRadius || 18;
+      floorSpikeShotDamage = floorSpikeDamage * 0.6;
+      if (path === 1) {
+        if (tier >= 1) {
+          floorSpikeExtendSpeed *= 1.2;
+          floorSpikeRetractSpeed *= 1.1;
+          floorSpikeHold *= 0.9;
+        }
+        if (tier >= 2) {
+          floorSpikeExtendSpeed *= 1.2;
+          floorSpikeRetractSpeed *= 1.15;
+          floorSpikeHold *= 0.85;
+        }
+        if (tier >= 3) {
+          floorSpikeBurnDps = 8;
+          floorSpikeBurnDelay = 0.5;
+        }
+        if (tier >= 4) {
+          floorSpikeBurnDps = 10;
+          floorSpikeBurnDelay = 0.25;
+        }
+        if (tier >= 5) {
+          floorSpikeDamage *= 1.35;
+        }
+      } else {
+        if (tier >= 1) {
+          floorSpikeDamage *= 1.25;
+        }
+        if (tier >= 2) {
+          floorSpikeDamage *= 1.45;
+        }
+        if (tier >= 3) {
+          floorSpikeShooter = true;
+          floorSpikeShotDamage = floorSpikeDamage * 0.6;
+          floorSpikeShotSpeed = 360;
+          floorSpikeShotTtl = 1;
+        }
+        if (tier >= 4) {
+          floorSpikeExtendSpeed *= 1.2;
+          floorSpikeHold *= 0.9;
+          if (floorSpikeShooter) {
+            floorSpikeShotCount = 2;
+          }
+        }
+        if (tier >= 5) {
+          floorSpikeExtendSpeed *= 1.35;
+          floorSpikeHold *= 0.85;
+          if (floorSpikeShooter) {
+            floorSpikeShotCount = 3;
+          }
+        }
+      }
+    }
+    if (ui.spikePath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
+      ui.spikePath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
+    }
   }
   const stats = getTowerStats(tower);
   const desc = getTowerDescription(tower.type);
@@ -2840,7 +2977,7 @@ function updateUpgradePanel() {
     ui.droneUpgradeActions.classList.toggle("hidden", tower.type !== "drone");
   }
   if (ui.spikeUpgradeActions) {
-    ui.spikeUpgradeActions.classList.toggle("hidden", tower.type !== "spikeTower");
+    ui.spikeUpgradeActions.classList.toggle("hidden", tower.type !== "spikeTower" && tower.type !== "floorSpike");
   }
   if (ui.wallUpgradeAction) {
     ui.wallUpgradeAction.classList.add("hidden");
@@ -2852,7 +2989,11 @@ function updateUpgradePanel() {
     ui.upgradeTargetAction.classList.toggle("hidden", bombMaxed);
   }
   if (ui.targetingRow) {
-    ui.targetingRow.classList.remove("hidden");
+    if (tower.type === "floorSpike") {
+      ui.targetingRow.classList.add("hidden");
+    } else {
+      ui.targetingRow.classList.remove("hidden");
+    }
   }
   if (ui.targetingMode) {
     const mode = tower.targeting || "first";
@@ -3486,6 +3627,26 @@ function updateProjectiles(dt) {
           const childRadius = proj.clusterChildRadius || proj.splashRadius * 0.45;
           spawnClusterBombs(targetPos.x, targetPos.y, proj.clusterCount, clusterDamage, clusterRadius, childCount, childDamage, childRadius);
         }
+        return false;
+      }
+      proj.x += (dx / dist) * step;
+      proj.y += (dy / dist) * step;
+      return true;
+    }
+
+    if (proj.kind === "spikeShot") {
+      proj.ttl = (proj.ttl || 0) - dt;
+      if (proj.ttl <= 0) return false;
+      if (!proj.target || proj.target.hp <= 0) return false;
+      const targetPos = getEnemyPosition(proj.target);
+      const dx = targetPos.x - proj.x;
+      const dy = targetPos.y - proj.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      proj.vx = (dx / dist) * proj.speed;
+      proj.vy = (dy / dist) * proj.speed;
+      const step = proj.speed * dt;
+      if (dist <= step) {
+        applyDamage(proj.target, proj.damage);
         return false;
       }
       proj.x += (dx / dist) * step;
@@ -4493,13 +4654,21 @@ function updateTowers(dt) {
 function updateFloorSpikes(dt) {
   const data = towerTypes.floorSpike;
   if (!data) return;
-  const damage = data.damage || 0;
-  const triggerRadius = data.triggerRadius || 18;
-  const extendSpeed = data.spikeExtendSpeed || 9;
-  const retractSpeed = data.spikeRetractSpeed || 7;
-  const holdTime = data.spikeHold || 0.25;
   for (const spike of state.towers) {
     if (spike.type !== "floorSpike") continue;
+    const stats = getTowerStats(spike);
+    const damage = (stats && stats.floorSpikeDamage) || data.damage || 0;
+    const triggerRadius = (stats && stats.floorSpikeTriggerRadius) || data.triggerRadius || 18;
+    const extendSpeed = (stats && stats.floorSpikeExtendSpeed) || data.spikeExtendSpeed || 9;
+    const retractSpeed = (stats && stats.floorSpikeRetractSpeed) || data.spikeRetractSpeed || 7;
+    const holdTime = (stats && stats.floorSpikeHold) || data.spikeHold || 0.25;
+    const burnDps = (stats && stats.floorSpikeBurnDps) || 0;
+    const burnDelay = (stats && stats.floorSpikeBurnDelay) || 999;
+    const shooter = Boolean(stats && stats.floorSpikeShooter);
+    const shotCount = Math.max(1, (stats && stats.floorSpikeShotCount) || 1);
+    const shotDamage = (stats && stats.floorSpikeShotDamage) || damage;
+    const shotSpeed = (stats && stats.floorSpikeShotSpeed) || 320;
+    const shotTtl = (stats && stats.floorSpikeShotTtl) || 1;
     const phase = spike.spikePhase || "idle";
     const progress = spike.spikeProgress || 0;
     const findTarget = () => {
@@ -4507,6 +4676,7 @@ function updateFloorSpikes(dt) {
       let bestDist = Infinity;
       for (const enemy of state.enemies) {
         if (enemy.hp <= 0) continue;
+        if (enemy.flying) continue;
         const dist = Math.hypot(enemy.x - spike.x, enemy.y - spike.y);
         if (dist <= triggerRadius && dist < bestDist) {
           bestDist = dist;
@@ -4521,8 +4691,31 @@ function updateFloorSpikes(dt) {
         spike.spikePhase = "extend";
         spike.spikeProgress = 0;
         spike.spikeHit = false;
+        spike.spikeShot = false;
       }
       continue;
+    }
+    if (tower.type === "flame" && stats.flameContinuous) {
+      if (target) {
+        fireFlameCone(tower, target, stats);
+      }
+      continue;
+    }
+    if (burnDps > 0 && (phase === "extend" || phase === "hold")) {
+      for (const enemy of state.enemies) {
+        if (enemy.hp <= 0) continue;
+        if (enemy.flying) continue;
+        const dist = Math.hypot(enemy.x - spike.x, enemy.y - spike.y);
+        if (dist > triggerRadius) {
+          enemy.floorSpikeExposure = 0;
+          continue;
+        }
+        enemy.floorSpikeExposure = (enemy.floorSpikeExposure || 0) + dt;
+        if (enemy.floorSpikeExposure >= burnDelay && !enemy.immuneHeat) {
+          enemy.burnTimer = Math.max(enemy.burnTimer, 1);
+          enemy.burnDps = Math.max(enemy.burnDps, burnDps);
+        }
+      }
     }
     if (phase === "extend") {
       const next = Math.min(1, progress + dt * extendSpeed);
@@ -4531,6 +4724,22 @@ function updateFloorSpikes(dt) {
       if (target && !spike.spikeHit && next >= 0.65) {
         applyDamage(target, damage);
         spike.spikeHit = true;
+        if (shooter && !spike.spikeShot) {
+          for (let i = 0; i < shotCount; i += 1) {
+            state.projectiles.push({
+              kind: "spikeShot",
+              x: spike.x,
+              y: spike.y,
+              target,
+              speed: shotSpeed,
+              damage: shotDamage,
+              slow: 0,
+              sourceType: "floorSpike",
+              ttl: shotTtl,
+            });
+          }
+          spike.spikeShot = true;
+        }
         spike.spikeHoldTimer = holdTime;
         spike.spikePhase = "hold";
         continue;
@@ -4609,11 +4818,12 @@ function spawnBroodlets(origin, count) {
       stealth: false,
       pathGroup,
     });
-    brood.x = origin.x + (Math.random() - 0.5) * 14;
-    brood.y = origin.y + (Math.random() - 0.5) * 14;
+    const offset = { x: (Math.random() - 0.5) * 22, y: (Math.random() - 0.5) * 22 };
+    brood.x = origin.x + offset.x;
+    brood.y = origin.y + offset.y;
     brood.path = pathPoints;
     brood.pathIndex = Math.max(0, Math.min(origin.pathIndex || 0, Math.max(0, pathPoints.length - 1)));
-    brood.pathOffset = { x: 0, y: 0 };
+    brood.pathOffset = offset;
     state.enemies.push(brood);
   }
 }
@@ -4792,7 +5002,7 @@ function updateEnemies(dt) {
     const dx = targetX - enemy.x;
     const dy = targetY - enemy.y;
     const dist = Math.hypot(dx, dy);
-    const step = speed * dt;
+    const step = (backtracking ? speed * (enemy.backtrackSpeedMult || 1.8) : speed) * dt;
     if (dist <= step) {
       enemy.x = targetX;
       enemy.y = targetY;
@@ -6379,6 +6589,23 @@ function drawProjectiles() {
       ctx.stroke();
       continue;
     }
+    if (proj.kind === "spikeShot") {
+      const vx = proj.vx || 1;
+      const vy = proj.vy || 0;
+      const angle = Math.atan2(vy, vx);
+      ctx.save();
+      ctx.translate(proj.x, proj.y);
+      ctx.rotate(angle);
+      ctx.fillStyle = "#f472b6";
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(-6, 3);
+      ctx.lineTo(-6, -3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      continue;
+    }
     ctx.fillStyle = proj.slow > 0 ? "#38bdf8" : "#facc15";
     ctx.beginPath();
     ctx.arc(proj.x, proj.y, 4, 0, Math.PI * 2);
@@ -7052,7 +7279,7 @@ if (ui.dronePath2) {
 if (ui.spikePath1) {
   ui.spikePath1.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (!state.selectedTower || state.selectedTower.type !== "spikeTower") return;
+    if (!state.selectedTower || (state.selectedTower.type !== "spikeTower" && state.selectedTower.type !== "floorSpike")) return;
     trySelectPath(state.selectedTower, 1);
   });
 }
@@ -7060,7 +7287,7 @@ if (ui.spikePath1) {
 if (ui.spikePath2) {
   ui.spikePath2.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (!state.selectedTower || state.selectedTower.type !== "spikeTower") return;
+    if (!state.selectedTower || (state.selectedTower.type !== "spikeTower" && state.selectedTower.type !== "floorSpike")) return;
     trySelectPath(state.selectedTower, 2);
   });
 }
@@ -7238,7 +7465,7 @@ if (ui.tutorialModal) {
 
 if (ui.openJasper) {
   ui.openJasper.addEventListener("click", () => {
-    if (!state.easterUnlocked) return;
+    if (!state.jasperEnabled) return;
     if (ui.jasperModal) ui.jasperModal.classList.remove("hidden");
   });
 }
@@ -7262,9 +7489,45 @@ if (ui.jasperModal) {
   });
 }
 
+if (ui.upgradeAllBy) {
+  ui.upgradeAllBy.addEventListener("click", () => {
+    if (!state.jasperEnabled) return;
+    const amount = Math.max(1, Number.parseInt((ui.upgradeAllByValue && ui.upgradeAllByValue.value) || "1", 10));
+    for (const tower of state.towers) {
+      for (let i = 0; i < amount; i += 1) {
+        upgradeTower(tower);
+      }
+    }
+    updateHud();
+  });
+}
+
+if (ui.jasperInfiniteFunds) {
+  ui.jasperInfiniteFunds.addEventListener("click", () => {
+    if (!state.jasperEnabled) return;
+    setInfiniteFunds(!state.infiniteGold);
+  });
+}
+
+if (ui.jasperApplyStats) {
+  ui.jasperApplyStats.addEventListener("click", () => {
+    if (!state.jasperEnabled) return;
+    const goldValue = Number.parseInt((ui.jasperSetGold && ui.jasperSetGold.value) || `${state.gold}`, 10);
+    const livesValue = Number.parseInt((ui.jasperSetLives && ui.jasperSetLives.value) || `${state.lives}`, 10);
+    if (Number.isFinite(goldValue)) {
+      state.gold = Math.max(0, goldValue);
+    }
+    if (Number.isFinite(livesValue)) {
+      state.lives = Math.max(0, livesValue);
+      state.maxLives = Math.max(state.maxLives, state.lives);
+    }
+    updateHud();
+  });
+}
+
   if (ui.spawnEnemy) {
     ui.spawnEnemy.addEventListener("click", () => {
-      if (!state.infiniteGold) return;
+      if (!state.jasperEnabled) return;
       const type = (ui.spawnEnemyType ? ui.spawnEnemyType.value : undefined) || "grunt";
       const count = Math.max(1, Number.parseInt((ui.spawnEnemyCount ? ui.spawnEnemyCount.value : undefined) || "1", 10));
       const radioactive = Boolean(ui.spawnEnemyRadioactive ? ui.spawnEnemyRadioactive.checked : undefined);
@@ -7522,13 +7785,65 @@ function tryUnlockOpTower() {
   }
 }
 
-function unlockJasperMenu() {
-  if (state.easterUnlocked) return;
-  state.easterUnlocked = true;
-  if (ui.openJasper) ui.openJasper.classList.remove("hidden");
-  if (ui.jasperControls) {
-    ui.jasperControls.classList.remove("hidden");
+function unlockFullEncyclopedia() {
+  const allEnemies = [
+    "grunt",
+    "speedy",
+    "heavy",
+    "stealth",
+    "boss",
+    "labrat",
+    "diamond",
+    "flying",
+    "thief",
+    "troll",
+    "buffer",
+    "saboteur",
+    "chimera",
+    "broodMother",
+    "aegis",
+    "swarm",
+  ];
+  const allMutations = ["armored", "darkmatter", "radioactive"];
+  for (const key of allEnemies) {
+    state.encyclopedia.add(key);
   }
+  for (const key of allMutations) {
+    state.encyclopedia.add(key);
+  }
+  updateEncyclopedia();
+}
+
+function setJasperEnabled(enabled) {
+  state.jasperEnabled = enabled;
+  if (ui.openJasper) ui.openJasper.classList.toggle("hidden", !enabled);
+  if (ui.jasperControls) ui.jasperControls.classList.toggle("hidden", !enabled);
+  if (!enabled && ui.jasperModal) {
+    ui.jasperModal.classList.add("hidden");
+  }
+  if (enabled) {
+    unlockFullEncyclopedia();
+  }
+}
+
+function unlockJasperMenu() {
+  if (!state.easterUnlocked) {
+    state.easterUnlocked = true;
+  }
+  setJasperEnabled(true);
+}
+
+function toggleJasperMode() {
+  if (!state.easterUnlocked) return;
+  setJasperEnabled(!state.jasperEnabled);
+}
+
+function setInfiniteFunds(enabled) {
+  state.infiniteGold = enabled;
+  if (enabled) {
+    state.gold = 999999;
+  }
+  updateHud();
 }
 
 function triggerSixSeven() {
@@ -7546,11 +7861,7 @@ function triggerSixSeven() {
 }
 
 function tryUnlockInfiniteGold() {
-  if (state.infiniteGold) return;
-  if (state.jasperProgress < 6) return;
-  state.infiniteGold = true;
-  state.gold = 999999;
-  updateHud();
+  return;
 }
 
 window.addEventListener("keydown", (event) => {
@@ -7600,7 +7911,12 @@ window.addEventListener("keydown", (event) => {
       state.jasperProgress = key === "j" ? 1 : 0;
     }
     if (state.jasperProgress >= 6) {
-      unlockJasperMenu();
+      if (!state.easterUnlocked) {
+        unlockJasperMenu();
+      } else {
+        toggleJasperMode();
+      }
+      state.jasperProgress = 0;
     }
     tryUnlockOpTower();
     tryUnlockInfiniteGold();
