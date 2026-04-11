@@ -48,6 +48,8 @@ const boot = () => {
   }
 const nukeImage = new Image();
 nukeImage.src = "./assets/nuke.png";
+const grenadeImage = new Image();
+grenadeImage.src = "./assets/grenade.png";
 const sixSevenImage = new Image();
 sixSevenImage.src = "./assets/sixseven-six.gif";
 
@@ -6861,16 +6863,21 @@ function drawProjectiles() {
       ctx.save();
       ctx.translate(proj.x, proj.y);
       ctx.rotate(angle + Math.PI * 0.2);
-      ctx.fillStyle = "#fb7185";
-      ctx.beginPath();
-      ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "#7f1d1d";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(-2, -5);
-      ctx.lineTo(3, -7);
-      ctx.stroke();
+      if (grenadeImage.complete && grenadeImage.naturalWidth) {
+        const size = 22;
+        ctx.drawImage(grenadeImage, -size * 0.5, -size * 0.5, size, size);
+      } else {
+        ctx.fillStyle = "#fb7185";
+        ctx.beginPath();
+        ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#7f1d1d";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-2, -5);
+        ctx.lineTo(3, -7);
+        ctx.stroke();
+      }
       ctx.restore();
       continue;
     }
