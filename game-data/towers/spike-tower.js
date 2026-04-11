@@ -1,0 +1,1 @@
+window.TDMData.registerTower("spikeTower", { cost: 85, range: 0, rate: 0, damage: 26, color: "#f472b6", slow: 0, spikeRange: 120, spikeExtendSpeed: 8, spikeRetractSpeed: 1, spikeHold: 0.6, allowOnPath: false, spikeDamage: 10, spikeSlow: 0.14, spikeCount: 4, drillDamage: 12, drillCharge: 1.5, drillDuration: 2.4, drillSlow: 0.26, blocksPath: false });

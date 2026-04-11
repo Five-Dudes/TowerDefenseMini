@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("stealth", { name: "Shade", desc: "Hidden until tapped. Watch towers can see it.", waveUnlock: { wave: 4, kind: "enemy", title: "Shade", desc: "Hidden until revealed by Watch Towers or taps." } });

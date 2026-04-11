@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("troll", { name: "Backstepper", desc: "Occasionally moves backward to dodge slow shots.", waveUnlock: { wave: 8, kind: "enemy", title: "Backstepper", desc: "Randomly steps backward to dodge shots." } });

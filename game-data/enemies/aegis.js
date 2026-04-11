@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("aegis", { name: "Aegis", desc: "Projects a shield that cancels area damage for nearby enemies.", waveUnlock: { wave: 9, kind: "enemy", title: "Aegis", desc: "Shields nearby enemies from splash." } });

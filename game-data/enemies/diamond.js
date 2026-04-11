@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("diamond", { name: "Prism", desc: "Armored, light-blue foe. Immune to heat and explosions.", waveUnlock: { wave: 15, kind: "enemy", title: "Diamond", desc: "Heavy armor and big HP." } });

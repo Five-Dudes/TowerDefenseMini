@@ -1,0 +1,141 @@
+(function registerMaps(globalScope) {
+  globalScope.TDMData.maps = [
+    {
+      id: "rift",
+      name: "Void Rift",
+      desc: "Classic bend through the void.",
+      palette: {
+        top: "#200b3b",
+        mid: "#130820",
+        bottom: "#0c0516",
+        shadow: "rgba(0, 0, 0, 0.3)",
+      },
+      paths: [
+        [
+          { x: 40, y: 70 },
+          { x: 260, y: 70 },
+          { x: 260, y: 220 },
+          { x: 560, y: 220 },
+          { x: 560, y: 420 },
+          { x: 900, y: 420 },
+        ],
+      ],
+    },
+    {
+      id: "twin",
+      name: "Twin Marsh",
+      desc: "Two portals converge at the midpoint.",
+      palette: {
+        top: "#0b2a2f",
+        mid: "#0f1b2a",
+        bottom: "#050c14",
+        shadow: "rgba(2, 8, 12, 0.3)",
+      },
+      paths: [
+        [
+          { x: 40, y: 70 },
+          { x: 260, y: 70 },
+          { x: 260, y: 300 },
+          { x: 520, y: 300 },
+          { x: 520, y: 440 },
+          { x: 900, y: 440 },
+        ],
+        [
+          { x: 40, y: 470 },
+          { x: 260, y: 470 },
+          { x: 260, y: 300 },
+          { x: 520, y: 300 },
+          { x: 520, y: 440 },
+          { x: 900, y: 440 },
+        ],
+      ],
+    },
+    {
+      id: "crystal",
+      name: "Crystal Basin",
+      desc: "Zig-zag corridors of crystal.",
+      palette: {
+        top: "#10284f",
+        mid: "#111936",
+        bottom: "#080e22",
+        shadow: "rgba(4, 8, 22, 0.35)",
+      },
+      paths: [
+        [
+          { x: 80, y: 60 },
+          { x: 80, y: 260 },
+          { x: 360, y: 260 },
+          { x: 360, y: 120 },
+          { x: 660, y: 120 },
+          { x: 660, y: 420 },
+          { x: 900, y: 420 },
+        ],
+        [
+          { x: 80, y: 500 },
+          { x: 80, y: 300 },
+          { x: 360, y: 300 },
+          { x: 360, y: 420 },
+          { x: 660, y: 420 },
+          { x: 660, y: 220 },
+          { x: 900, y: 220 },
+        ],
+      ],
+    },
+    {
+      id: "cinder",
+      name: "Cinder Steps",
+      desc: "A long ember climb with a final drop.",
+      palette: {
+        top: "#3b1208",
+        mid: "#20100d",
+        bottom: "#110807",
+        shadow: "rgba(28, 10, 6, 0.32)",
+      },
+      paths: [
+        [
+          { x: 40, y: 110 },
+          { x: 180, y: 110 },
+          { x: 180, y: 340 },
+          { x: 360, y: 340 },
+          { x: 360, y: 170 },
+          { x: 620, y: 170 },
+          { x: 620, y: 410 },
+          { x: 900, y: 410 },
+        ],
+      ],
+    },
+    {
+      id: "bastion",
+      name: "Split Bastion",
+      desc: "Twin lanes spiral into the keep.",
+      palette: {
+        top: "#182c21",
+        mid: "#0e1815",
+        bottom: "#09110e",
+        shadow: "rgba(6, 16, 12, 0.3)",
+      },
+      paths: [
+        [
+          { x: 40, y: 90 },
+          { x: 220, y: 90 },
+          { x: 220, y: 210 },
+          { x: 420, y: 210 },
+          { x: 420, y: 360 },
+          { x: 620, y: 360 },
+          { x: 620, y: 250 },
+          { x: 900, y: 250 },
+        ],
+        [
+          { x: 40, y: 450 },
+          { x: 220, y: 450 },
+          { x: 220, y: 330 },
+          { x: 420, y: 330 },
+          { x: 420, y: 180 },
+          { x: 620, y: 180 },
+          { x: 620, y: 250 },
+          { x: 900, y: 250 },
+        ],
+      ],
+    },
+  ];
+})(window);

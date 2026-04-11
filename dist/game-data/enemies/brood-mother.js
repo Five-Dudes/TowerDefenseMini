@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("broodMother", { name: "Brood Mother", desc: "Spawns broods of swarmlets as it advances.", waveUnlock: { wave: 16, kind: "enemy", title: "Brood Mother", desc: "Summons broods as it moves." } });

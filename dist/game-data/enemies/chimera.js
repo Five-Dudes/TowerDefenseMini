@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("chimera", { name: "Chimera", desc: "Late-game menace with many traits that splits on death.", waveUnlock: { wave: 18, kind: "enemy", title: "Chimera", desc: "Late-game hybrid menace." } });

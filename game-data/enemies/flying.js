@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("flying", { name: "Skimmer", desc: "Floats over mines and traps. Slower, less durable.", waveUnlock: { wave: 7, kind: "enemy", title: "Flying", desc: "Dodges traps and mines." } });

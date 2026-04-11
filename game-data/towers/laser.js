@@ -1,0 +1,1 @@
+window.TDMData.registerTower("laser", { cost: 160, range: 190, rate: 1.35, damage: 18, color: "#ef4444", slow: 0, laser: true, beamWidth: 8, fireUnlockLevel: 3, fireDps: 9, fireDuration: 2.4, blocksPath: true });

@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("labrat", { name: "Cipher", desc: "Slightly squishy octagon. Immune to nukes.", waveUnlock: { wave: 6, kind: "enemy", title: "Labrat", desc: "Tough experiment, immune to radiation." } });

@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("boss", { name: "Titan", desc: "Huge health. Shows up every 10 waves.", waveUnlock: { wave: 10, kind: "enemy", title: "Boss", desc: "First boss arrives. Massive HP." } });

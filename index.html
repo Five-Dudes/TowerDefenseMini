@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tower Defense Mini v2</title>
+    <title>Tower Defense Mini V2.14</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -13,7 +13,7 @@
     <div class="app">
       <div id="title-screen" class="title-screen">
         <div class="title-card">
-          <h1>Tower Defense Mini v2</h1>
+          <h1>Tower Defense Mini V2.14</h1>
           <p>Choose your map and difficulty to begin.</p>
           <div class="map-picker">
             <div class="map-label">Map Select</div>
@@ -30,15 +30,23 @@
                 <span class="map-name">Crystal Basin</span>
                 <span class="map-desc">Zig-zag corridors.</span>
               </button>
+              <button class="map-card" data-map="cinder">
+                <span class="map-name">Cinder Steps</span>
+                <span class="map-desc">Long ember climb.</span>
+              </button>
+              <button class="map-card" data-map="bastion">
+                <span class="map-name">Split Bastion</span>
+                <span class="map-desc">Twin lanes spiral.</span>
+              </button>
             </div>
           </div>
           <div class="difficulty-buttons">
-            <button data-difficulty="easy">Easy</button>
-            <button data-difficulty="medium">Medium</button>
-            <button data-difficulty="hard">Hard</button>
+            <button id="easy-btn" type="button" data-difficulty="easy">Easy</button>
+            <button id="medium-btn" type="button" data-difficulty="medium">Medium</button>
+            <button id="hard-btn" type="button" data-difficulty="hard">Hard</button>
           </div>
           <div class="difficulty-buttons">
-            <button id="open-tutorial">Tutorial</button>
+            <button id="tutorial-btn" type="button">Tutorial</button>
           </div>
         </div>
       </div>
@@ -57,7 +65,7 @@
       </div>
       <header class="topbar">
         <div>
-          <h1>Tower Defense Mini v2</h1>
+          <h1>Tower Defense Mini V2.14</h1>
           <p id="map-name">Map: Void Rift</p>
           <p>Place towers on the void. Enemies reroute around defenses. Don’t let 100 through.</p>
         </div>
@@ -71,6 +79,7 @@
               <option value="1.5">1.5x</option>
               <option value="2">2x</option>
               <option value="3">3x</option>
+              <option value="100">100x</option>
             </select>
             <button id="auto-wave">Auto Next Wave: Off</button>
           </div>
@@ -110,6 +119,7 @@
               <button id="build-spike" class="btn-bomb">Spike Tower (85)</button>
               <button id="build-mine" class="btn-mine">Mine (20)</button>
               <button id="build-floor-spike" class="btn-mine">Floor Spikes (60)</button>
+              <button id="build-secret" class="btn-dart hidden">??? (18)</button>
             </div>
             <div class="upgrade-panel" id="upgrade-panel">
               <strong>Upgrade</strong>
@@ -351,6 +361,43 @@
       </div>
     </div>
     <div id="damage-flash"></div>
-    <script src="game.js"></script>
+    <script defer src="game-data/core.js"></script>
+    <script defer src="game-data/maps.js"></script>
+    <script defer src="game-data/towers/watch.js"></script>
+    <script defer src="game-data/towers/freeze.js"></script>
+    <script defer src="game-data/towers/drone.js"></script>
+    <script defer src="game-data/towers/bomb.js"></script>
+    <script defer src="game-data/towers/laser.js"></script>
+    <script defer src="game-data/towers/dart.js"></script>
+    <script defer src="game-data/towers/factory.js"></script>
+    <script defer src="game-data/towers/flame.js"></script>
+    <script defer src="game-data/towers/trap.js"></script>
+    <script defer src="game-data/towers/spike-tower.js"></script>
+    <script defer src="game-data/towers/mine.js"></script>
+    <script defer src="game-data/towers/floor-spike.js"></script>
+    <script defer src="game-data/towers/wall.js"></script>
+    <script defer src="game-data/towers/op.js"></script>
+    <script defer src="game-data/towers/secret.js"></script>
+    <script defer src="game-data/enemies/grunt.js"></script>
+    <script defer src="game-data/enemies/speedy.js"></script>
+    <script defer src="game-data/enemies/heavy.js"></script>
+    <script defer src="game-data/enemies/stealth.js"></script>
+    <script defer src="game-data/enemies/boss.js"></script>
+    <script defer src="game-data/enemies/labrat.js"></script>
+    <script defer src="game-data/enemies/diamond.js"></script>
+    <script defer src="game-data/enemies/flying.js"></script>
+    <script defer src="game-data/enemies/thief.js"></script>
+    <script defer src="game-data/enemies/troll.js"></script>
+    <script defer src="game-data/enemies/buffer.js"></script>
+    <script defer src="game-data/enemies/saboteur.js"></script>
+    <script defer src="game-data/enemies/chimera.js"></script>
+    <script defer src="game-data/enemies/brood-mother.js"></script>
+    <script defer src="game-data/enemies/aegis.js"></script>
+    <script defer src="game-data/enemies/swarm.js"></script>
+    <script defer src="game-data/mutations.js"></script>
+    <script defer src="game-enemies.js"></script>
+    <script defer src="game-effects.js"></script>
+    <script defer src="game-audio.js"></script>
+    <script defer src="game.js"></script>
   </body>
 </html>

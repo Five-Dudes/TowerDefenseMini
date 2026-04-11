@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("saboteur", { name: "Saboteur", desc: "Disables traps, stuns towers, and shuts down factory towers temporarily.", waveUnlock: { wave: 14, kind: "enemy", title: "Saboteur", desc: "Disables nearby traps, mines, and factory towers for a short time." } });

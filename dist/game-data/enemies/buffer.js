@@ -1,0 +1,1 @@
+window.TDMData.registerEnemy("buffer", { name: "Totemist", desc: "Heals and buffs nearby enemies.", waveUnlock: { wave: 13, kind: "enemy", title: "Buffer", desc: "Buffs and heals nearby enemies." } });

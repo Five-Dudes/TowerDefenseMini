@@ -9,6 +9,40 @@ const boot = () => {
   }
   booted = true;
   const ctx = canvas.getContext("2d");
+  const audioController = window.GameAudio ? window.GameAudio.createAudioController() : null;
+  const effectUtils = window.GameEffects || {};
+  const effectLerp = effectUtils.lerp || ((a, b, t) => a + (b - a) * t);
+  const effectClamp01 = effectUtils.clamp01 || ((value) => Math.max(0, Math.min(1, value)));
+  const effectLerpColor = effectUtils.lerpColor || ((from, to, t) => {
+    const p = effectClamp01(t);
+    return {
+      r: Math.round(effectLerp(from.r, to.r, p)),
+      g: Math.round(effectLerp(from.g, to.g, p)),
+      b: Math.round(effectLerp(from.b, to.b, p)),
+    };
+  });
+  const effectQuadraticBezier = effectUtils.quadraticBezier || ((p0, p1, p2, t) => {
+    const inv = 1 - t;
+    return {
+      x: inv * inv * p0.x + 2 * inv * t * p1.x + t * t * p2.x,
+      y: inv * inv * p0.y + 2 * inv * t * p1.y + t * t * p2.y,
+    };
+  });
+  const effectQuadraticBezierTangent = effectUtils.quadraticBezierTangent || ((p0, p1, p2, t) => ({
+    x: 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x),
+    y: 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y),
+  }));
+
+  function playSound(name) {
+    if (audioController) {
+      audioController.playSound(name);
+    }
+  }
+
+  function playAttackImpactSound(kind = "attack") {
+    playSound(kind);
+  }
+
   function coalesce(value, fallback) {
     return value === null || value === undefined ? fallback : value;
   }
@@ -36,7 +70,7 @@ const ui = {
   alertContent: document.getElementById("alert-content"),
   closeAlert: document.getElementById("close-alert"),
   tutorialModal: document.getElementById("tutorial-modal"),
-  openTutorial: document.getElementById("open-tutorial"),
+  openTutorial: document.getElementById("tutorial-btn"),
   closeTutorial: document.getElementById("close-tutorial"),
   jasperModal: document.getElementById("jasper-modal"),
   openJasper: document.getElementById("open-jasper"),
@@ -55,6 +89,7 @@ const ui = {
   buildSpike: document.getElementById("build-spike"),
   buildMine: document.getElementById("build-mine"),
   buildFloorSpike: document.getElementById("build-floor-spike"),
+  buildSecret: document.getElementById("build-secret"),
   buildWall: document.getElementById("build-wall"),
   buildOp: document.getElementById("build-op"),
   nukeButton: document.getElementById("nuke-button"),
@@ -131,6 +166,20 @@ const ui = {
   mainMenu: document.getElementById("main-menu"),
 };
 
+document.title = "Tower Defense Mini V2.14";
+for (const heading of document.querySelectorAll(".title-card h1, .topbar h1")) {
+  heading.textContent = heading.textContent.replace(/Tower Defense Mini.*$/i, "Tower Defense Mini V2.14");
+}
+const footer = document.querySelector(".footer");
+if (footer) {
+  footer.textContent = "V2.14";
+}
+for (const requiredId of ["easy-btn", "medium-btn", "hard-btn", "tutorial-btn"]) {
+  if (!document.getElementById(requiredId)) {
+    console.error(`${requiredId} missing`);
+  }
+}
+
 const buildButtons = {
   watch: ui.buildWatch,
   freeze: ui.buildFreeze,
@@ -144,6 +193,7 @@ const buildButtons = {
   spikeTower: ui.buildSpike,
   mine: ui.buildMine,
   floorSpike: ui.buildFloorSpike,
+  secret: ui.buildSecret,
   wall: ui.buildWall,
   op: ui.buildOp,
 };
@@ -200,8 +250,11 @@ const state = {
   factoryKillLifeBonus: 0,
   jasperProgress: 0,
   jasperEnabled: false,
+  secretTowerUnlocked: false,
+  secretAchievementShown: false,
   revealStealth: false,
   autoWave: false,
+  auraSnapshot: null,
   waveSpeed: 1,
   towerLevelCap: 5,
   mapId: "rift",
@@ -239,6 +292,7 @@ const state = {
   sixSevenActive: false,
   sixSevenTimer: null,
   halfCash: false,
+  radioactiveFactoryBonus: 0,
 };
 
 window.state = state;
@@ -324,89 +378,7 @@ window.debugStep = () => {
   return { before, after };
 };
 
-const maps = [
-  {
-    id: "rift",
-    name: "Void Rift",
-    desc: "Classic bend through the void.",
-    palette: {
-      top: "#200b3b",
-      mid: "#130820",
-      bottom: "#0c0516",
-      shadow: "rgba(0, 0, 0, 0.3)",
-    },
-    paths: [
-      [
-        { x: 40, y: 70 },
-        { x: 260, y: 70 },
-        { x: 260, y: 220 },
-        { x: 560, y: 220 },
-        { x: 560, y: 420 },
-        { x: 900, y: 420 },
-      ],
-    ],
-  },
-  {
-    id: "twin",
-    name: "Twin Marsh",
-    desc: "Two portals converge at the midpoint.",
-    palette: {
-      top: "#0b2a2f",
-      mid: "#0f1b2a",
-      bottom: "#050c14",
-      shadow: "rgba(2, 8, 12, 0.3)",
-    },
-    paths: [
-      [
-        { x: 40, y: 70 },
-        { x: 260, y: 70 },
-        { x: 260, y: 300 },
-        { x: 520, y: 300 },
-        { x: 520, y: 440 },
-        { x: 900, y: 440 },
-      ],
-      [
-        { x: 40, y: 470 },
-        { x: 260, y: 470 },
-        { x: 260, y: 300 },
-        { x: 520, y: 300 },
-        { x: 520, y: 440 },
-        { x: 900, y: 440 },
-      ],
-    ],
-  },
-  {
-    id: "crystal",
-    name: "Crystal Basin",
-    desc: "Zig-zag corridors of crystal.",
-    palette: {
-      top: "#10284f",
-      mid: "#111936",
-      bottom: "#080e22",
-      shadow: "rgba(4, 8, 22, 0.35)",
-    },
-    paths: [
-      [
-        { x: 80, y: 60 },
-        { x: 80, y: 260 },
-        { x: 360, y: 260 },
-        { x: 360, y: 120 },
-        { x: 660, y: 120 },
-        { x: 660, y: 420 },
-        { x: 900, y: 420 },
-      ],
-      [
-        { x: 80, y: 500 },
-        { x: 80, y: 300 },
-        { x: 360, y: 300 },
-        { x: 360, y: 420 },
-        { x: 660, y: 420 },
-        { x: 660, y: 220 },
-        { x: 900, y: 220 },
-      ],
-    ],
-  },
-];
+const maps = (window.TDMData && Array.isArray(window.TDMData.maps)) ? window.TDMData.maps : [];
 
 const grid = {
   size: 40,
@@ -453,181 +425,20 @@ function getWallPathSides(x, y) {
   };
 }
 
-const towerTypes = {
-  watch: {
-    cost: 45,
-    range: 100,
-    rate: 0.48,
-    damage: 9,
-    color: "#f59e0b",
-    slow: 0,
-    blocksPath: true,
-  },
-  freeze: {
-    cost: 80,
-    range: 120,
-    rate: 1.3,
-    damage: 0,
-    color: "#7dd3fc",
-    slow: 0.55,
-    projectileType: "gas",
-    gasSpeed: 60,
-    gasDuration: 1.1,
-    gasRadius: 12,
-    gasMaxRadius: 70,
-    gasGrowRate: 55,
-    blocksPath: true,
-  },
-  drone: {
-    cost: 95,
-    range: 120,
-    rate: 0.75,
-    damage: 10,
-    color: "#34d399",
-    slow: 0,
-    moveSpeed: 1.6,
-    moveRadius: 22,
-    blocksPath: true,
-  },
-  bomb: {
-    cost: 100,
-    range: 120,
-    rate: 1.5,
-    damage: 18,
-    color: "#fb7185",
-    slow: 0,
-    splashRadius: 36,
-    projectileSpeed: 300,
-    blocksPath: true,
-  },
-  laser: {
-    cost: 160,
-    range: 190,
-    rate: 1.35,
-    damage: 18,
-    color: "#ef4444",
-    slow: 0,
-    laser: true,
-    beamWidth: 8,
-    fireUnlockLevel: 3,
-    fireDps: 9,
-    fireDuration: 2.4,
-    blocksPath: true,
-  },
-  dart: {
-    cost: 85,
-    range: 140,
-    rate: 0.8,
-    damage: 6,
-    color: "#a78bfa",
-    slow: 0,
-    poisonDps: 10,
-    poisonDuration: 4,
-    projectileSpeed: 380,
-    blocksPath: true,
-  },
-  factory: {
-    cost: 120,
-    range: 0,
-    rate: 0,
-    damage: 0,
-    color: "#fbbf24",
-    slow: 0,
-    isFactory: true,
-  },
-  flame: {
-    cost: 105,
-    range: 70,
-    rate: 0.22,
-    damage: 28,
-    color: "#f97316",
-    slow: 0,
-    coneAngle: 0.7,
-    burnDps: 12,
-    burnDuration: 2.4,
-    blocksPath: true,
-  },
-  trap: {
-    cost: 110,
-    range: 140,
-    rate: 0,
-    damage: 0,
-    color: "#f59e0b",
-    slow: 0,
-    blocksPath: true,
-  },
-  spikeTower: {
-    cost: 85,
-    range: 0,
-    rate: 0,
-    damage: 26,
-    color: "#f472b6",
-    slow: 0,
-    spikeRange: 120,
-    spikeExtendSpeed: 8,
-    spikeRetractSpeed: 1,
-    spikeHold: 0.6,
-    allowOnPath: false,
-    spikeDamage: 10,
-    spikeSlow: 0.14,
-    spikeCount: 4,
-    drillDamage: 12,
-    drillCharge: 1.5,
-    drillDuration: 2.4,
-    drillSlow: 0.26,
-    blocksPath: true,
-  },
-  mine: {
-    cost: 20,
-    range: 0,
-    rate: 0,
-    damage: 14,
-    color: "#a3e635",
-    slow: 0,
-    allowOnPath: true,
-    isMine: true,
-    triggerRadius: 14,
-    splashRadius: 40,
-    noGridlock: true,
-  },
-  floorSpike: {
-    cost: 60,
-    range: 0,
-    rate: 0,
-    damage: 5,
-    color: "#f97316",
-    slow: 0,
-    allowOnPath: true,
-    isFloorSpike: true,
-    noGridlock: true,
-    triggerRadius: 18,
-    spikeExtendSpeed: 10,
-    spikeRetractSpeed: 7,
-    spikeHold: 0.2,
-  },
-  wall: {
-    cost: 15,
-    range: 0,
-    rate: 0,
-    damage: 0,
-    color: "#64748b",
-    slow: 0,
-    allowOnPath: true,
-    blocksPath: true,
-  },
-  op: {
-    cost: 0,
-    range: 560,
-    rate: 0,
-    damage: 9999,
-    color: "#fde047",
-    slow: 0,
-    laser: true,
-    beamWidth: 14,
-    splashRadius: 60,
-    blocksPath: true,
-  },
+const towerTypes = (window.TDMData && window.TDMData.towers) ? window.TDMData.towers : {};
+const enemyRuntime = window.TDMEnemyRuntime || {};
+const enemyRuntimeDeps = {
+  state,
+  towerTypes,
+  grid,
+  getActivePaths,
+  isBossType,
+  coalesce,
 };
+const createEnemy = (type, options = {}) => enemyRuntime.createEnemy(enemyRuntimeDeps, type, options);
+const getEnemyPosition = (enemy) => enemyRuntime.getEnemyPosition(enemy);
+const getEnemyRadius = (enemy) => enemyRuntime.getEnemyRadius(enemyRuntimeDeps, enemy);
+const ensureEnemyPath = (enemy) => enemyRuntime.ensureEnemyPath(enemyRuntimeDeps, enemy);
 
 function snapToGrid(x, y) {
   const gx = Math.floor(x / grid.size) * grid.size + grid.size / 2;
@@ -809,7 +620,6 @@ function recomputeGlobalPath(extraBlockedCell) {
     newPaths.push(pathPoints);
   }
   state.pathPoints = newPaths;
-  updateEnemyPaths();
   cleanupOffPathFloorSpikes();
   return true;
 }
@@ -862,6 +672,32 @@ function updateHud() {
   if (ui.jasperInfiniteFunds) {
     ui.jasperInfiniteFunds.textContent = `Infinite Funds: ${state.infiniteGold ? "On" : "Off"}`;
   }
+  if (ui.buildSecret) {
+    ui.buildSecret.classList.toggle("hidden", !state.secretTowerUnlocked);
+  }
+}
+
+function getPlacedTowerCount() {
+  return state.towers.filter((tower) => !tower.isMini).length;
+}
+
+function unlockSecretTower(showMessage = false) {
+  if (state.secretTowerUnlocked) return;
+  state.secretTowerUnlocked = true;
+  if (ui.buildSecret) {
+    ui.buildSecret.classList.remove("hidden");
+  }
+  if (showMessage && !state.secretAchievementShown) {
+    state.secretAchievementShown = true;
+    showAlert("Hidden Achievement", "<p><strong>Minimalist Defense</strong>: Reach wave 50 with fewer than 10 towers.</p><p>Unlocked: <strong>Scrap Turret</strong>.</p>");
+  }
+}
+
+function checkSecretAchievement() {
+  if (state.secretTowerUnlocked) return;
+  if (state.wave < 50) return;
+  if (getPlacedTowerCount() >= 10) return;
+  unlockSecretTower(true);
 }
 
 function awardGold(amount) {
@@ -892,6 +728,190 @@ function flashButton(element) {
   window.setTimeout(() => {
     element.classList.remove("alert");
   }, 500);
+}
+
+function notificationsSuppressed() {
+  return state.autoWave || state.difficulty === "hard";
+}
+
+function getSourceAnchor(source) {
+  if (!source) return null;
+  return {
+    x: coalesce(source.baseX, source.x),
+    y: coalesce(source.baseY, source.y),
+  };
+}
+
+function getEnemySeparationRadius(enemy) {
+  return Math.max(8, getEnemyRadius(enemy) * 0.9);
+}
+
+function findBlockingEnemy(enemy, nextX, nextY) {
+  const enemyProgress = getEnemyProgress(enemy);
+  let blocker = null;
+  let blockerProgress = Infinity;
+  for (const other of state.enemies) {
+    if (other === enemy || other.hp <= 0) continue;
+    if (other.path !== enemy.path) continue;
+    const otherProgress = getEnemyProgress(other);
+    if (otherProgress <= enemyProgress) continue;
+    const minGap = getEnemySeparationRadius(enemy) + getEnemySeparationRadius(other) - 2;
+    if (Math.hypot(other.x - nextX, other.y - nextY) >= minGap) continue;
+    if (otherProgress < blockerProgress) {
+      blocker = other;
+      blockerProgress = otherProgress;
+    }
+  }
+  return blocker;
+}
+
+function refreshAuraSnapshot() {
+  const flameSupports = [];
+  const dartSupports = [];
+  let factoryBonus = 0;
+  for (const tower of state.towers) {
+    if (tower.disabled) continue;
+    if (tower.type === "factory") {
+      if (!tower.factoryDisabled) {
+        factoryBonus += 1;
+      }
+      continue;
+    }
+    const level = tower.level || 1;
+    if (tower.type === "flame" && level >= 5) {
+      const stats = getTowerStats(tower);
+      if (stats) {
+        flameSupports.push({
+          tower,
+          x: tower.x,
+          y: tower.y,
+          range: stats.range || towerTypes.flame.range,
+          burnDps: Math.max(stats.fireDps || 0, towerTypes.flame.burnDps || 0),
+          burnDuration: Math.max(stats.fireDuration || 0, towerTypes.flame.burnDuration || 0),
+        });
+      }
+      continue;
+    }
+    if (tower.type === "dart" && level >= 5 && (tower.upgradePath || 1) === 1) {
+      const stats = getTowerStats(tower);
+      if (stats) {
+        dartSupports.push({
+          tower,
+          x: tower.x,
+          y: tower.y,
+          range: stats.range || towerTypes.dart.range,
+          poisonDps: Math.max(stats.globalPoisonDps || 3, 3),
+          poisonDuration: Math.max(stats.globalPoisonDuration || 2.5, 2.5),
+          transferRadius: 70,
+        });
+      }
+    }
+  }
+  state.auraSnapshot = {
+    flameSupports,
+    dartSupports,
+    radioactiveFactoryBonus: factoryBonus,
+  };
+  state.radioactiveFactoryBonus = factoryBonus;
+}
+
+function getSupportEffectsForSource(source, options = {}) {
+  if (!source) return { burnDps: 0, burnDuration: 0, poisonDps: 0, poisonDuration: 0, poisonTransfer: false, poisonTransferRadius: 0 };
+  const anchor = getSourceAnchor(source);
+  if (!anchor) {
+    return { burnDps: 0, burnDuration: 0, poisonDps: 0, poisonDuration: 0, poisonTransfer: false, poisonTransferRadius: 0 };
+  }
+  const snapshot = state.auraSnapshot || { flameSupports: [], dartSupports: [] };
+  const sourceType = options.sourceType || source.type || source.kind;
+  let burnDps = 0;
+  let burnDuration = 0;
+  let poisonDps = 0;
+  let poisonDuration = 0;
+  let poisonTransfer = false;
+  let poisonTransferRadius = 0;
+
+  if (sourceType !== "factory") {
+    for (const support of snapshot.flameSupports) {
+      if (support.tower === source || support.tower === source.owner) continue;
+      if (Math.hypot(anchor.x - support.x, anchor.y - support.y) > support.range) continue;
+      const laserMultiplier = sourceType === "laser" ? 2 : 1;
+      burnDps = Math.max(burnDps, support.burnDps * laserMultiplier);
+      burnDuration = Math.max(burnDuration, support.burnDuration);
+    }
+  }
+
+  const poisonEligible = sourceType === "spikeTower"
+    || sourceType === "floorSpike"
+    || sourceType === "watch"
+    || sourceType === "freeze"
+    || sourceType === "drone"
+    || sourceType === "bomb"
+    || sourceType === "laser"
+    || sourceType === "flame"
+    || sourceType === "dart"
+    || sourceType === "op"
+    || sourceType === "sentry";
+
+  if (poisonEligible) {
+    for (const support of snapshot.dartSupports) {
+      if (support.tower === source || support.tower === source.owner) continue;
+      if (Math.hypot(anchor.x - support.x, anchor.y - support.y) > support.range) continue;
+      poisonDps = Math.max(poisonDps, support.poisonDps);
+      poisonDuration = Math.max(poisonDuration, support.poisonDuration);
+      poisonTransfer = true;
+      poisonTransferRadius = Math.max(poisonTransferRadius, support.transferRadius);
+    }
+  }
+
+  return { burnDps, burnDuration, poisonDps, poisonDuration, poisonTransfer, poisonTransferRadius };
+}
+
+function applyTransferredPoison(centerEnemy, supportEffects) {
+  if (!centerEnemy || !supportEffects.poisonTransfer || supportEffects.poisonDps <= 0 || supportEffects.poisonDuration <= 0) return;
+  for (const splash of state.enemies) {
+    if (splash === centerEnemy || splash.hp <= 0 || splash.darkMatter) continue;
+    if (Math.hypot(splash.x - centerEnemy.x, splash.y - centerEnemy.y) > supportEffects.poisonTransferRadius) continue;
+    splash.dotTimer = Math.max(splash.dotTimer || 0, supportEffects.poisonDuration * 0.7);
+    splash.dotDps = Math.max(splash.dotDps || 0, supportEffects.poisonDps * 0.6);
+  }
+}
+
+function applySupportEffectsToEnemy(enemy, source, options = {}) {
+  if (!enemy || enemy.hp <= 0) return;
+  const supportEffects = getSupportEffectsForSource(source, options);
+  if (supportEffects.burnDps > 0 && supportEffects.burnDuration > 0 && !enemy.darkMatter && !enemy.immuneHeat) {
+    enemy.burnTimer = Math.max(enemy.burnTimer || 0, supportEffects.burnDuration);
+    enemy.burnDps = Math.max(enemy.burnDps || 0, supportEffects.burnDps);
+  }
+  if (supportEffects.poisonDps > 0 && supportEffects.poisonDuration > 0 && !enemy.darkMatter) {
+    enemy.dotTimer = Math.max(enemy.dotTimer || 0, supportEffects.poisonDuration);
+    enemy.dotDps = Math.max(enemy.dotDps || 0, supportEffects.poisonDps);
+    applyTransferredPoison(enemy, supportEffects);
+  }
+}
+
+function pushApart(a, b, minDist) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.hypot(dx, dy) || 0.001;
+  if (dist >= minDist) return;
+  const push = (minDist - dist) * 0.5;
+  const nx = dx / dist;
+  const ny = dy / dist;
+  a.x -= nx * push;
+  a.y -= ny * push;
+  b.x += nx * push;
+  b.y += ny * push;
+}
+
+function resolveDynamicOverlaps() {
+  const drones = state.towers.filter((tower) => tower.type === "drone");
+
+  for (let i = 0; i < drones.length; i += 1) {
+    for (let j = i + 1; j < drones.length; j += 1) {
+      pushApart(drones[i], drones[j], drones[i].isMini || drones[j].isMini ? 16 : 20);
+    }
+  }
 }
 
 function getWallUpgradeCost(level = 0) {
@@ -929,6 +949,21 @@ function sellTower(tower) {
   if (state.selectedTower === tower) {
     state.selectedTower = null;
   }
+}
+
+function startFactoryRepair(tower) {
+  if (!tower || tower.type !== "factory" || !tower.factoryDisabled) return false;
+  if (tower.factoryRepairing) return false;
+  const reactivateCost = 100;
+  if (!canAfford(reactivateCost)) {
+    flashButton(ui.upgradePanel);
+    return false;
+  }
+  payCost(reactivateCost);
+  tower.factoryRepairing = true;
+  tower.factoryRepairTimer = 1;
+  updateHud();
+  return true;
 }
 
 function getTrapUpgradeCost(trap) {
@@ -1020,135 +1055,22 @@ function getSpikeDirections(tower) {
 
 function getSpikeDirection(tower) {
   const dirs = getSpikeDirections(tower);
-  return dirs[0] || null;
+  if (dirs[0]) return dirs[0];
+  const nearest = getNearestPathPoint(tower.x, tower.y);
+  if (!nearest) return null;
+  const dx = nearest.point.x - tower.x;
+  const dy = nearest.point.y - tower.y;
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { x: Math.sign(dx), y: 0 };
+  }
+  return { x: 0, y: Math.sign(dy) };
 }
 
 function updateEncyclopedia() {
   if (!ui.encyclopedia) return;
-  const enemyEntries = [
-    {
-      key: "grunt",
-      name: "Vanguard",
-      desc: "Standard enemy with balanced speed.",
-    },
-    {
-      key: "speedy",
-      name: "Bolt",
-      desc: "Very quick but not tanky.",
-    },
-    {
-      key: "heavy",
-      name: "Juggernaut",
-      desc: "Very tanky but slow.",
-    },
-    {
-      key: "stealth",
-      name: "Shade",
-      desc: "Hidden until tapped. Watch towers can see it.",
-    },
-    {
-      key: "boss",
-      name: "Titan",
-      desc: "Huge health. Shows up every 10 waves.",
-    },
-    {
-      key: "labrat",
-      name: "Cipher",
-      desc: "Slightly squishy octagon. Immune to nukes.",
-    },
-    {
-      key: "diamond",
-      name: "Prism",
-      desc: "Armored, light-blue foe. Immune to heat and explosions.",
-    },
-    {
-      key: "flying",
-      name: "Skimmer",
-      desc: "Floats over mines and traps. Slower, less durable.",
-    },
-    {
-      key: "thief",
-      name: "Pickpocket",
-      desc: "Steals gold every few seconds.",
-    },
-    {
-      key: "troll",
-      name: "Backstepper",
-      desc: "Occasionally moves backward to dodge slow shots.",
-    },
-    {
-      key: "buffer",
-      name: "Totemist",
-      desc: "Heals and buffs nearby enemies.",
-    },
-    {
-      key: "saboteur",
-      name: "Saboteur",
-      desc: "Disables traps and stuns towers briefly.",
-    },
-    {
-      key: "chimera",
-      name: "Chimera",
-      desc: "Late-game menace with many traits that splits on death.",
-    },
-    {
-      key: "thief",
-      name: "Pickpocket",
-      desc: "Steals gold every few seconds.",
-    },
-    {
-      key: "troll",
-      name: "Backstepper",
-      desc: "Occasionally moves backward to dodge slow shots.",
-    },
-    {
-      key: "buffer",
-      name: "Totemist",
-      desc: "Heals and buffs nearby enemies.",
-    },
-    {
-      key: "saboteur",
-      name: "Saboteur",
-      desc: "Disables traps and stuns towers briefly.",
-    },
-    {
-      key: "chimera",
-      name: "Chimera",
-      desc: "Late-game menace with many traits that splits on death.",
-    },
-    {
-      key: "broodMother",
-      name: "Brood Mother",
-      desc: "Spawns broods of swarmlets as it advances.",
-    },
-    {
-      key: "aegis",
-      name: "Aegis",
-      desc: "Projects a shield that cancels area damage for nearby enemies.",
-    },
-    {
-      key: "swarm",
-      name: "Brood",
-      desc: "Summons a flurry of tiny, fast enemies.",
-    },
-  ];
-  const mutationEntries = [
-    {
-      key: "armored",
-      name: "Armored Mutation",
-      desc: "Only laser or bomb damage hurts.",
-    },
-    {
-      key: "darkmatter",
-      name: "Dark Matter Mutation",
-      desc: "Immune to laser, poison, and slow effects.",
-    },
-    {
-      key: "radioactive",
-      name: "Radioactive Effect",
-      desc: "Lingering hazard from the Nuke. Halves enemy health and speed for a full wave.",
-    },
-  ];
+  const enemyEntries = Object.values((window.TDMData && window.TDMData.enemies) || {});
+  const mutationEntries = (window.TDMData && window.TDMData.mutations) || [];
   const lines = [];
   const seenEnemies = enemyEntries.filter((entry) => state.encyclopedia.has(entry.key));
   const seenMutations = mutationEntries.filter((entry) => state.encyclopedia.has(entry.key));
@@ -1250,6 +1172,7 @@ function startWave() {
 }
 
 function showAlert(title, message, pauseWave = false) {
+  if (notificationsSuppressed()) return;
   if (!ui.alertModal || !ui.alertTitle || !ui.alertContent) return;
   ui.alertTitle.textContent = title;
   ui.alertContent.innerHTML = message;
@@ -1259,28 +1182,10 @@ function showAlert(title, message, pauseWave = false) {
   }
 }
 
-const waveUnlocks = [
-  { wave: 1, kind: "enemy", title: "Grunts", desc: "Basic frontline enemies.", value: "grunt" },
-  { wave: 2, kind: "enemy", title: "Speedy", desc: "Fast enemies that slip through gaps.", value: "speedy" },
-  { wave: 3, kind: "enemy", title: "Heavy", desc: "Slow, tanky targets.", value: "heavy" },
-  { wave: 4, kind: "enemy", title: "Shade", desc: "Hidden until revealed by Watch Towers or taps.", value: "stealth" },
-  { wave: 5, kind: "mutation", title: "Armored", desc: "Bomb and Laser break armor fastest.", value: "armored" },
-  { wave: 6, kind: "enemy", title: "Labrat", desc: "Tough experiment, immune to radiation.", value: "labrat" },
-  { wave: 7, kind: "enemy", title: "Flying", desc: "Dodges traps and mines.", value: "flying" },
-  { wave: 8, kind: "enemy", title: "Backstepper", desc: "Randomly steps backward to dodge shots.", value: "troll" },
-  { wave: 9, kind: "enemy", title: "Aegis", desc: "Shields nearby enemies from splash.", value: "aegis" },
-  { wave: 10, kind: "enemy", title: "Boss", desc: "First boss arrives. Massive HP.", value: "boss" },
-  { wave: 11, kind: "enemy", title: "Thief", desc: "Steals gold every few seconds.", value: "thief" },
-  { wave: 12, kind: "enemy", title: "Swarm", desc: "Spawns a sea of swarmlets.", value: "swarm" },
-  { wave: 13, kind: "enemy", title: "Buffer", desc: "Buffs and heals nearby enemies.", value: "buffer" },
-  { wave: 14, kind: "enemy", title: "Saboteur", desc: "Disables nearby traps and mines.", value: "saboteur" },
-  { wave: 15, kind: "enemy", title: "Diamond", desc: "Heavy armor and big HP.", value: "diamond" },
-  { wave: 16, kind: "enemy", title: "Brood Mother", desc: "Summons broods as it moves.", value: "broodMother" },
-  { wave: 17, kind: "mutation", title: "Dark Matter", desc: "Resists slow and poison effects.", value: "darkMatter" },
-  { wave: 18, kind: "enemy", title: "Chimera", desc: "Late-game hybrid menace.", value: "chimera" },
-];
+const waveUnlocks = ((window.TDMData && window.TDMData.waveUnlocks) ? [...window.TDMData.waveUnlocks] : []).sort((a, b) => a.wave - b.wave);
 
 function handleWaveAlerts(wave) {
+  if (notificationsSuppressed()) return;
   if (wave === 1) {
     showAlert("Wave 1 Briefing", "<p><strong>Grunts</strong> arrive in Wave 1. Place basic towers early.</p>");
     return;
@@ -1318,7 +1223,31 @@ function isBossType(type) {
   return type === "boss" || type.startsWith("boss_");
 }
 
+function chooseOpenSpawnPathGroup() {
+  const paths = getActivePaths();
+  if (!paths || paths.length === 0) return 0;
+  const openGroups = [];
+  for (let i = 0; i < paths.length; i += 1) {
+    const pathPoints = paths[i];
+    const start = pathPoints && pathPoints[0];
+    if (!start) continue;
+    const blocked = state.towers.some((tower) => {
+      if (tower.type !== "drone") return false;
+      const dx = tower.x - start.x;
+      const dy = tower.y - start.y;
+      return Math.hypot(dx, dy) < 22;
+    });
+    if (!blocked) {
+      openGroups.push(i);
+    }
+  }
+  if (openGroups.length === 0) return null;
+  return openGroups[Math.floor(Math.random() * openGroups.length)];
+}
+
 function spawnEnemy() {
+  const pathGroup = chooseOpenSpawnPathGroup();
+  if (pathGroup === null) return false;
   const isBossWave = state.wave % 10 === 0;
   const roll = Math.random();
   let type = "grunt";
@@ -1371,7 +1300,6 @@ function spawnEnemy() {
   if (type === "swarm") {
     registerEnemyInEncyclopedia(type, armored, darkMatter);
     const paths = getActivePaths();
-    const pathGroup = Math.floor(Math.random() * paths.length);
     const pathPoints = paths[pathGroup] || paths[0];
     const start = pathPoints && pathPoints[0] ? pathPoints[0] : { x: 0, y: 0 };
     const next = pathPoints && pathPoints[1] ? pathPoints[1] : { x: start.x + 1, y: start.y };
@@ -1397,10 +1325,11 @@ function spawnEnemy() {
         pathOffset,
       }));
     }
-    return;
+    return true;
   }
   registerEnemyInEncyclopedia(type, armored, darkMatter, stealth);
-  state.enemies.push(createEnemy(type, { armored, darkMatter, stealth }));
+  state.enemies.push(createEnemy(type, { armored, darkMatter, stealth, pathGroup }));
+  return true;
 }
 
 function registerEnemyInEncyclopedia(type, armored, darkMatter, stealth = false) {
@@ -1416,184 +1345,6 @@ function registerEnemyInEncyclopedia(type, armored, darkMatter, stealth = false)
     state.encyclopedia.add("stealth");
   }
   updateEncyclopedia();
-}
-
-function createEnemy(type, options = {}) {
-  const isBoss = isBossType(type);
-  const isFast = type === "speedy" || type === "boss_fast";
-  const isSwarmlet = type === "swarmlet";
-  const isHeavy = type === "heavy" || type === "boss_pentagon" || type === "boss_hexagon";
-  const isDiamond = type === "diamond" || type === "boss_diamond";
-  const isAegis = type === "aegis";
-  const isFlying = type === "flying";
-  const isThief = type === "thief";
-  const isTroll = type === "troll";
-  const isBuffer = type === "buffer";
-  const isSaboteur = type === "saboteur";
-  const isChimera = type === "chimera";
-  const isBroodMother = type === "broodMother";
-  const tier = isBoss ? 3 : Math.min(3, Math.floor((state.wave - 1) / 6) + 1);
-  const tierFactor = tier === 3 ? 4 : tier === 2 ? 2 : 1;
-  const baseHp = state.wave === 1 ? 20 : 22 + state.wave * 5;
-  const hpMultiplier = (state.difficultyMultipliers.enemyHp || 1) * 2;
-  const maxHpBase = isBoss ? baseHp * 12 : baseHp;
-  const speedyHpMultiplier = isFast ? 0.7 : 1;
-  let maxHp = maxHpBase * hpMultiplier * (isHeavy ? 2.4 : 1) * speedyHpMultiplier * tierFactor;
-  const baseSpeed = isFast
-    ? (state.wave === 1 ? 56 : 60 + state.wave * 2.2)
-    : (state.wave === 1 ? 26 : 28 + state.wave * 2.6);
-  let speed = (isHeavy ? baseSpeed * 0.6 : baseSpeed) * (tier === 3 ? 0.75 : tier === 2 ? 0.85 : 1) * ((coalesce(options.stealth, type === "stealth")) ? 0.9 : 1);
-  if (type === "labrat") {
-    maxHp *= 0.9;
-    speed *= 1.05;
-  }
-  if (isDiamond) {
-    maxHp *= 0.9;
-    speed *= 0.95;
-  }
-  if (isAegis) {
-    maxHp *= 1.2;
-    speed *= 0.9;
-  }
-  if (isFlying) {
-    maxHp *= 0.7;
-    speed *= 0.85;
-  }
-  if (isThief) {
-    maxHp *= 0.65;
-    speed *= 1.05;
-  }
-  if (isTroll) {
-    maxHp *= 0.75;
-    speed *= 0.95;
-  }
-  if (isBuffer) {
-    maxHp *= 1.05;
-    speed *= 0.85;
-  }
-  if (isSaboteur) {
-    maxHp *= 0.9;
-    speed *= 0.95;
-  }
-  if (isChimera) {
-    maxHp *= 2.2;
-    speed *= 0.85;
-  }
-  if (isBroodMother) {
-    maxHp *= 1.5;
-    speed *= 0.8;
-  }
-  if (isSwarmlet) {
-    maxHp *= 0.2;
-    speed *= 1.15;
-  }
-  const speedMultiplier = state.difficultyMultipliers.enemySpeed || 1;
-  const radioactive = type === "labrat" ? false : (options.radioactive || state.radioactiveWave === state.wave);
-  if (radioactive) {
-    maxHp *= 0.5;
-    speed *= 0.5;
-  }
-  const activePaths = getActivePaths();
-  const pathGroup = coalesce(options.pathGroup, Math.floor(Math.random() * activePaths.length));
-  const pathPoints = activePaths[pathGroup] || activePaths[0];
-  const start = pathPoints[0];
-  const pathOffset = type === "swarmlet"
-    ? (options.pathOffset || { x: (Math.random() - 0.5) * 22, y: (Math.random() - 0.5) * 22 })
-    : null;
-  const isStealth = coalesce(options.stealth, type === "stealth");
-  const baseCastleDamage = type === "swarm" || type === "swarmlet" ? 8 : 5;
-  const armoredFlag = options.armored || isDiamond || isChimera || false;
-  const darkMatterFlag = !armoredFlag && !isDiamond && (options.darkMatter || false);
-  const enemy = {
-    x: start.x + (pathOffset ? pathOffset.x : 0),
-    y: start.y + (pathOffset ? pathOffset.y : 0),
-    hp: maxHp,
-    maxHp,
-    speed: speed * speedMultiplier,
-    path: pathPoints,
-    pathIndex: 0,
-    slowTimer: 0,
-    type,
-    armored: armoredFlag,
-    darkMatter: darkMatterFlag,
-    dotTimer: 0,
-    dotDps: 0,
-    burnTimer: 0,
-    burnDps: 0,
-    embrittleTimer: 0,
-    embrittleMultiplier: 1,
-    tier,
-    tierFactor,
-    isBoss,
-    facing: 0,
-    stealth: isStealth || isChimera,
-    revealed: !(isStealth || isChimera),
-    radioactive: isChimera ? true : radioactive,
-    revealTimer: 0,
-    nukeImmune: type === "labrat" || (isDiamond && tier >= 3) || isChimera,
-    immuneHeat: isDiamond || isChimera,
-    immuneExplosion: isDiamond || isChimera,
-    explosionVulnerable: type === "swarmlet",
-    pathOffset,
-    pathGroup,
-    castleDamage: baseCastleDamage,
-    umbrellaRadius: isAegis ? grid.size * 2 : 0,
-    umbrellaShielded: false,
-    flying: isFlying || isChimera,
-    thief: isThief,
-    stealTimer: isThief ? 2 : 0,
-    troll: isTroll,
-    backtrackTimer: 0,
-    backtrackCooldown: isTroll ? 1.5 : 0,
-    backtrackSpeedMult: isTroll ? 2.4 : 1,
-    buffer: isBuffer,
-    buffRadius: isBuffer ? grid.size * 2.4 : 0,
-    buffed: false,
-    healRate: isBuffer ? 6 : 0,
-    saboteur: isSaboteur,
-    sabotageTimer: isSaboteur ? 1.8 : 0,
-    chimera: isChimera,
-    broodMother: isBroodMother,
-    broodTimer: isBroodMother ? 2.4 : 0,
-  };
-  if (enemy.armored) {
-    enemy.armorHits = 0;
-    enemy.armorBreakThreshold = 2 + Math.floor(Math.random() * 2);
-  }
-  if (options.poisoned) {
-    enemy.dotTimer = coalesce(options.dotTimer, 4);
-    enemy.dotDps = coalesce(options.dotDps, (towerTypes.dart ? towerTypes.dart.poisonDps : undefined) || 8);
-  }
-  if (options.onFlame) {
-    enemy.burnTimer = coalesce(options.burnTimer, 2.5);
-    enemy.burnDps = coalesce(options.burnDps, (towerTypes.laser ? towerTypes.laser.fireDps : undefined) || 6);
-  }
-  return enemy;
-}
-
-function getEnemyPosition(enemy) {
-  return { x: enemy.x, y: enemy.y };
-}
-
-function getEnemyRadius(enemy) {
-  const tierScale = 1 + ((enemy.tier || 1) - 1) * 0.18;
-  const isBoss = enemy.isBoss || isBossType(enemy.type);
-  const baseRadius = enemy.type === "swarmlet" ? 6 : isBoss ? 22 : enemy.type === "heavy" ? 16 : 12;
-  return baseRadius * tierScale;
-}
-
-function ensureEnemyPath(enemy) {
-  if (!enemy) return;
-  if (Number.isFinite(enemy.x) && Number.isFinite(enemy.y)) return;
-  const paths = getActivePaths();
-  if (!paths || paths.length === 0) return;
-  const group = Number.isFinite(enemy.pathGroup) ? enemy.pathGroup : 0;
-  const pathPoints = paths[group] || paths[0];
-  if (!pathPoints || pathPoints.length === 0) return;
-  enemy.path = pathPoints;
-  enemy.pathIndex = 0;
-  enemy.x = pathPoints[0].x;
-  enemy.y = pathPoints[0].y;
 }
 
 function placeTower(type, x, y) {
@@ -1654,6 +1405,7 @@ function placeTower(type, x, y) {
     paidCost: cost,
     disabled: false,
     targeting: "first",
+    spawnInTimer: 0.18,
   };
   if (type === "trap") {
     tower.upgradePath = 1;
@@ -1702,6 +1454,7 @@ function placeTower(type, x, y) {
     ui.buildOp.disabled = true;
   }
   state.towers.push(tower);
+  playSound("place");
   updateHud();
   return true;
 }
@@ -2303,66 +2056,6 @@ function getTowerStats(tower) {
       damage = spikeDamage;
       slow = Math.max(slow, spikeSlow);
     }
-    if (tower.type === "floorSpike") {
-      const tier = Math.min(level, 5);
-      const path = tower.upgradePath || 1;
-      floorSpikeDamage = damage;
-      floorSpikeExtendSpeed = data.spikeExtendSpeed || 10;
-      floorSpikeRetractSpeed = data.spikeRetractSpeed || 7;
-      floorSpikeHold = data.spikeHold || 0.2;
-      floorSpikeTriggerRadius = data.triggerRadius || 18;
-      floorSpikeShotDamage = floorSpikeDamage * 0.6;
-      if (path === 1) {
-        if (tier >= 1) {
-          floorSpikeExtendSpeed *= 1.2;
-          floorSpikeRetractSpeed *= 1.1;
-          floorSpikeHold *= 0.9;
-        }
-        if (tier >= 2) {
-          floorSpikeExtendSpeed *= 1.2;
-          floorSpikeRetractSpeed *= 1.15;
-          floorSpikeHold *= 0.85;
-        }
-        if (tier >= 3) {
-          floorSpikeBurnDps = 8;
-          floorSpikeBurnDelay = 0.5;
-        }
-        if (tier >= 4) {
-          floorSpikeBurnDps = 10;
-          floorSpikeBurnDelay = 0.25;
-        }
-        if (tier >= 5) {
-          floorSpikeDamage *= 1.35;
-        }
-      } else {
-        if (tier >= 1) {
-          floorSpikeDamage *= 1.25;
-        }
-        if (tier >= 2) {
-          floorSpikeDamage *= 1.45;
-        }
-        if (tier >= 3) {
-          floorSpikeShooter = true;
-          floorSpikeShotDamage = floorSpikeDamage * 0.6;
-          floorSpikeShotSpeed = 360;
-          floorSpikeShotTtl = 1;
-        }
-        if (tier >= 4) {
-          floorSpikeExtendSpeed *= 1.2;
-          floorSpikeHold *= 0.9;
-          if (floorSpikeShooter) {
-            floorSpikeShotCount = 2;
-          }
-        }
-        if (tier >= 5) {
-          floorSpikeExtendSpeed *= 1.35;
-          floorSpikeHold *= 0.85;
-          if (floorSpikeShooter) {
-            floorSpikeShotCount = 3;
-          }
-        }
-      }
-    }
     if (tower.type === "dart") {
       const tier = Math.min(level, 5);
       const path = tower.upgradePath || 1;
@@ -2391,26 +2084,6 @@ function getTowerStats(tower) {
           dartArmorWeaken = true;
         }
       }
-    }
-  }
-
-  if (tower.type === "factory") {
-    const path = tower.upgradePath || 1;
-    const tier = Math.min(level, 5);
-    factoryGold = 1;
-    factoryLife = 0;
-    if (path === 1) {
-      if (tier >= 1) factoryGold = 2;
-      if (tier >= 2) factoryGold = 4;
-      if (tier >= 3) factoryKillGoldBonus = 2;
-      if (tier >= 4) factoryLifeDrop = 1;
-      if (tier >= 5) factoryLifeDrop = 5;
-    } else {
-      if (tier >= 1) factoryLife = 1;
-      if (tier >= 2) factoryLife = 2;
-      if (tier >= 3) factoryKillLifeBonus = 1;
-      if (tier >= 4) factoryGoldDropMult = 2;
-      if (tier >= 5) factoryGoldDropMult = 4;
     }
   }
   if (tower.type === "flame") {
@@ -2600,6 +2273,8 @@ function getTowerDescription(type) {
       return "Floor spikes that damage enemies passing over them.";
     case "wall":
       return "Blocks the path. Place towers on it.";
+    case "secret":
+      return "Cheap spammy turret unlocked by a hidden achievement.";
     case "op":
       return "Overpowered beam that deletes enemies.";
     default:
@@ -2621,6 +2296,7 @@ function getTowerDisplayName(tower) {
     spikeTower: "Spike Tower",
     mine: "Mine",
     floorSpike: "Floor Spikes",
+    secret: "Scrap Turret",
     wall: "Wall",
     op: "Overpowered",
   };
@@ -2637,6 +2313,7 @@ function getTowerDisplayName(tower) {
     spikeTower: "Impaler",
     mine: "Rift Charge",
     floorSpike: "Barb Field",
+    secret: "Scrap Storm",
     wall: "Bastion",
     op: "Annihilator",
   };
@@ -2941,36 +2618,6 @@ function updateUpgradePanel() {
       ui.dartPath2.textContent = `Path 2 (${p2Tier}/5): ${nextP2}`;
     }
   }
-  if (tower.type === "factory") {
-    const tier = Math.min(tower.level, 5);
-    const path = tower.upgradePath || 1;
-    const cost = getUpgradeCost(tower);
-    const path1Upgrades = [
-      "give 2 gold",
-      "give 4 gold",
-      "more gold on kills",
-      "random life drop",
-      "bigger life drop",
-    ];
-    const path2Upgrades = [
-      "give 1 life",
-      "give 2 lives",
-      "life on kill",
-      "random x2 gold drop",
-      "random x4 gold drop",
-    ];
-    upgradeText = [
-      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
-    ][0];
-    if (ui.factoryPath1) {
-      const p1Tier = path === 1 ? tier : 0;
-      ui.factoryPath1.textContent = `Path 1 (${p1Tier}/5): MONEY MONEY MONEY`;
-    }
-    if (ui.factoryPath2) {
-      const p2Tier = path === 2 ? tier : 0;
-      ui.factoryPath2.textContent = `Path 2 (${p2Tier}/5): Incubator`;
-    }
-  }
   if (tower.type === "drone") {
     const tier = Math.min(tower.level, 5);
     const path = tower.upgradePath || 1;
@@ -3123,7 +2770,9 @@ function updateUpgradePanel() {
   const statLine = `Range ${Math.round(safeRange)} | Rate ${safeRate.toFixed(2)}s | Damage ${Math.round(safeDamage)}${tower.type === "freeze" ? ` | Slow ${safeSlow.toFixed(2)}` : ""}${speedText}${burnText}`;
   const displayName = getTowerDisplayName(tower);
   const cap = state.towerLevelCap || 5;
-  if (bombMaxed) {
+  if (tower.type === "factory" && tower.factoryDisabled) {
+    ui.upgradeDetails.textContent = "";
+  } else if (bombMaxed) {
     ui.upgradeDetails.textContent = `${displayName}\n\nMAX TIER.\n\n${desc}\n\n${upgradeText}\n\n${statLine}`;
   } else if ((tower.level || 1) >= cap) {
     ui.upgradeDetails.textContent = `${displayName}\n\nMAX TIER.\n\n${desc}\n\n${tower.type === "laser" ? "From tier 3 there is burning.\n\n" : ""}${upgradeText}\n\n${statLine}`;
@@ -3142,8 +2791,40 @@ function updateUpgradePanel() {
   if (ui.dartUpgradeActions) {
     ui.dartUpgradeActions.classList.toggle("hidden", tower.type !== "dart");
   }
+  if (tower.type === "factory") {
+    const tier = Math.min(tower.level, 5);
+    const path = tower.upgradePath || 1;
+    const cost = getUpgradeCost(tower);
+    const path1Upgrades = [
+      "give 2 gold",
+      "give 4 gold",
+      "more gold on kills",
+      "random life drop",
+      "bigger life drop",
+    ];
+    const path2Upgrades = [
+      "give 1 life",
+      "give 2 lives",
+      "life on kill",
+      "random x2 gold drop",
+      "random x4 gold drop",
+    ];
+    upgradeText = [
+      `Tier ${tier} (Cost ${cost}): ${path === 1 ? path1Upgrades[tier - 1] : path2Upgrades[tier - 1]}`,
+    ][0];
+    if (ui.factoryPath1) {
+      const p1Tier = path === 1 ? tier : 0;
+      const nextP1 = path1Upgrades[Math.min(p1Tier, 4)];
+      ui.factoryPath1.textContent = `Path 1 (${p1Tier}/5): MONEY MONEY MONEY`;
+    }
+    if (ui.factoryPath2) {
+      const p2Tier = path === 2 ? tier : 0;
+      const nextP2 = path2Upgrades[Math.min(p2Tier, 4)];
+      ui.factoryPath2.textContent = `Path 2 (${p2Tier}/5): Incubator`;
+    }
+  }
   if (ui.factoryUpgradeActions) {
-    ui.factoryUpgradeActions.classList.toggle("hidden", tower.type !== "factory");
+    ui.factoryUpgradeActions.classList.toggle("hidden", tower.type !== "factory" || tower.factoryDisabled);
   }
   if (ui.trapUpgradeActions) {
     ui.trapUpgradeActions.classList.toggle("hidden", tower.type !== "trap");
@@ -3164,13 +2845,20 @@ function updateUpgradePanel() {
     ui.wallUpgradeAction.classList.add("hidden");
   }
   if (ui.upgradeTargetRow) {
-    ui.upgradeTargetRow.classList.toggle("hidden", bombMaxed);
+    ui.upgradeTargetRow.classList.toggle("hidden", bombMaxed || (tower.type === "factory" && tower.factoryDisabled));
   }
   if (ui.upgradeTargetAction) {
-    ui.upgradeTargetAction.classList.toggle("hidden", bombMaxed);
+    ui.upgradeTargetAction.classList.toggle("hidden", bombMaxed ? true : false);
+  }
+  if (ui.upgradeTo) {
+    if (tower.type === "factory" && tower.factoryDisabled) {
+      ui.upgradeTo.textContent = tower.factoryRepairing ? "Repairing..." : "Repair (100)";
+    } else {
+      ui.upgradeTo.textContent = "Upgrade";
+    }
   }
   if (ui.targetingRow) {
-    if (tower.type === "floorSpike") {
+    if (tower.type === "floorSpike" || (tower.type === "factory" && tower.factoryDisabled)) {
       ui.targetingRow.classList.add("hidden");
     } else {
       ui.targetingRow.classList.remove("hidden");
@@ -3228,23 +2916,6 @@ function handleClick(event) {
   let selected = null;
   const towersHere = state.towers.filter((tower) => Math.hypot(tower.x - x, tower.y - y) < 20);
   const selectableHere = towersHere.filter((tower) => !tower.isMini);
-  if (state.placing) {
-    if (state.placing === "wall") {
-      const wallHere = selectableHere.find((tower) => tower.type === "wall");
-      if (wallHere) {
-        state.selectedTower = wallHere;
-        state.selectedTrap = null;
-        state.placing = null;
-        return;
-      }
-    } else {
-      const hasNonWall = selectableHere.some((tower) => tower.type !== "wall");
-      if (!hasNonWall) {
-        placeTower(state.placing, snapped.x, snapped.y);
-        return;
-      }
-    }
-  }
   if (selectableHere.length > 0) {
     const wall = selectableHere.find((tower) => tower.type === "wall");
     const nonWall = selectableHere.find((tower) => tower.type !== "wall");
@@ -3271,18 +2942,6 @@ function handleClick(event) {
   }
 }
 
-function tryDragPlaceAt(x, y) {
-  if (!state.placing) return;
-  const snapped = snapToGrid(x, y);
-  const cell = worldToCell(snapped.x, snapped.y);
-  const key = cellKey(cell.cx, cell.cy);
-  if (state.dragPlaceKey === key) return;
-  state.dragPlaceKey = key;
-  const towersHere = state.towers.filter((tower) => Math.hypot(tower.x - snapped.x, tower.y - snapped.y) < 20 && !tower.isMini);
-  if (towersHere.length > 0) return;
-  placeTower(state.placing, snapped.x, snapped.y);
-}
-
 function emitFreezeGas(tower, enemy, stats) {
   const { data } = stats;
   const origin = { x: tower.x, y: tower.y };
@@ -3295,6 +2954,7 @@ function emitFreezeGas(tower, enemy, stats) {
   const maxRadius = Math.max(stats.range, stats.freezeMaxRadius || data.gasMaxRadius || 0, stats.freezeRadius || data.gasRadius || 0);
   const startRadius = Math.min(stats.freezeRadius || data.gasRadius || 10, maxRadius);
   if (!proj) {
+    playSound("freezeAura");
     proj = {
       kind: "gas",
       owner: tower,
@@ -3344,6 +3004,7 @@ function fireProjectile(tower, enemy, stats) {
   const { data } = stats;
   const damage = stats.damage;
   const sourceType = tower.type;
+  const supportEffects = getSupportEffectsForSource(tower, { sourceType });
   let poisonDps = (data.poisonDps || 0) + (tower.level - 1) * 1.5;
   let poisonDuration = data.poisonDuration ? data.poisonDuration + (tower.level - 1) * 0.2 : 0;
   let embrittlementPercent = sourceType === "dart"
@@ -3379,6 +3040,7 @@ function fireProjectile(tower, enemy, stats) {
         damage: dmg,
         slow: stats.slow,
         sourceType,
+        owner: tower,
         poisonDps: 0,
         poisonDuration: 0,
         embrittlementPercent: 0,
@@ -3410,16 +3072,12 @@ function fireProjectile(tower, enemy, stats) {
           damage: missileDamage,
           splashRadius: missileSplash,
           sourceType,
+          owner: tower,
           armorPierce: true,
         });
       }
     }
     return;
-  }
-
-  if (sourceType !== "dart" && state.globalPoisonDps > 0) {
-    poisonDps = Math.max(poisonDps, state.globalPoisonDps);
-    poisonDuration = Math.max(poisonDuration, state.globalPoisonDuration);
   }
 
   if (data.splashRadius || stats.splashRadius) {
@@ -3439,6 +3097,7 @@ function fireProjectile(tower, enemy, stats) {
         splashRadius: splash,
         ttl: stats.bombProjectileKind === "rocket" ? 5 : undefined,
         sourceType,
+        owner: tower,
         clusterCount: stats.bombClusterCount || 0,
         clusterChildCount: stats.bombClusterChildCount || 0,
         clusterDamage: stats.bombClusterDamage || 0,
@@ -3454,6 +3113,8 @@ function fireProjectile(tower, enemy, stats) {
     if (sourceType === "watch") {
       if (!(enemy.armored && sourceType !== "laser" && sourceType !== "bomb" && sourceType !== "op" && !armorWeaken)) {
         applyDamage(enemy, damage);
+        applySupportEffectsToEnemy(enemy, tower, { sourceType });
+        playAttackImpactSound();
         enemy.revealed = true;
       }
       const dx = enemy.x - tower.x;
@@ -3478,12 +3139,18 @@ function fireProjectile(tower, enemy, stats) {
       damage,
       slow: stats.slow,
       sourceType,
+      owner: tower,
       poisonDps,
       poisonDuration,
       embrittlementPercent,
       poisonRadius,
       armorWeaken,
-      poisonTransfer: Boolean(stats.dartPoisonTransfer),
+      poisonTransfer: Boolean(stats.dartPoisonTransfer || supportEffects.poisonTransfer),
+      supportBurnDps: supportEffects.burnDps,
+      supportBurnDuration: supportEffects.burnDuration,
+      supportPoisonDps: supportEffects.poisonDps,
+      supportPoisonDuration: supportEffects.poisonDuration,
+      supportPoisonTransferRadius: supportEffects.poisonTransferRadius,
     });
   }
 }
@@ -3538,6 +3205,10 @@ function fireLaser(tower, enemy, stats, range) {
         applyArmorHit(target);
       }
       applyDamage(target, damage);
+      applySupportEffectsToEnemy(target, tower, { sourceType });
+      if (sourceType !== "freeze") {
+        playAttackImpactSound();
+      }
       if (stats.fireDps > 0 && stats.fireDuration > 0 && !target.darkMatter && !target.immuneHeat) {
         target.burnTimer = Math.max(target.burnTimer, stats.fireDuration);
         target.burnDps = Math.max(target.burnDps, stats.fireDps);
@@ -3557,6 +3228,7 @@ function fireLaser(tower, enemy, stats, range) {
               applyArmorHit(splash);
             }
             applyDamage(splash, damage * 0.5);
+            applySupportEffectsToEnemy(splash, tower, { sourceType });
             applyOpDebuffs(splash);
             if (splash.hp <= 0) {
               handleEnemyDeath(splash);
@@ -3719,6 +3391,7 @@ function updateProjectiles(dt) {
           let pulseTriggered = false;
           if (!state.nukeSmoke && proj.damage > 0) {
             applyDamage(enemy, proj.damage * dt);
+            applySupportEffectsToEnemy(enemy, proj.owner, { sourceType: proj.owner ? proj.owner.type : proj.sourceType });
             if (enemy.hp <= 0) {
               handleEnemyDeath(enemy);
               continue;
@@ -3730,6 +3403,7 @@ function updateProjectiles(dt) {
               enemy.stunTimer = Math.max(enemy.stunTimer || 0, proj.pulseDuration);
               if (proj.pulseDamage > 0) {
                 applyDamage(enemy, proj.pulseDamage);
+                applySupportEffectsToEnemy(enemy, proj.owner, { sourceType: proj.owner ? proj.owner.type : proj.sourceType });
                 if (enemy.hp <= 0) {
                   handleEnemyDeath(enemy);
                   continue;
@@ -3800,6 +3474,7 @@ function updateProjectiles(dt) {
         if (proj.sourceType === "bomb" || proj.kind === "rocket") {
           pushShockwave(targetPos.x, targetPos.y, proj.splashRadius, "rgba(248, 113, 113, 0.5)");
         }
+        playAttackImpactSound("explosion");
         for (const enemy of state.enemies) {
           if (enemy.hp <= 0) continue;
           if (enemy.armored && proj.sourceType !== "bomb" && !proj.armorPierce) continue;
@@ -3809,6 +3484,7 @@ function updateProjectiles(dt) {
               applyArmorHit(enemy);
             }
             applyExplosionDamage(enemy, proj.damage);
+            applySupportEffectsToEnemy(enemy, proj.owner, { sourceType: proj.sourceType });
             if (enemy.hp <= 0) {
               handleEnemyDeath(enemy);
             }
@@ -3830,6 +3506,7 @@ function updateProjectiles(dt) {
                 damage,
                 splashRadius: radius,
                 sourceType: proj.sourceType,
+                owner: proj.owner,
                 clusterCount: childCount || 0,
                 clusterDamage: childDamage || 0,
                 clusterRadius: childRadius || 0,
@@ -3866,6 +3543,7 @@ function updateProjectiles(dt) {
       const step = proj.speed * dt;
       if (dist <= step) {
         applyDamage(proj.target, proj.damage);
+        applySupportEffectsToEnemy(proj.target, proj.owner, { sourceType: proj.sourceType });
         return false;
       }
       proj.x += (dx / dist) * step;
@@ -3887,6 +3565,9 @@ function updateProjectiles(dt) {
           applyArmorHit(proj.target);
         }
         applyDamage(proj.target, proj.damage);
+        if (proj.sourceType !== "freeze") {
+          playAttackImpactSound();
+        }
         if (proj.sourceType === "watch") {
           proj.target.revealed = true;
         }
@@ -3919,7 +3600,7 @@ function updateProjectiles(dt) {
             }
           }
           if (proj.poisonTransfer) {
-            const radius = 70;
+            const radius = proj.supportPoisonTransferRadius || 70;
             for (const splash of state.enemies) {
               if (splash === proj.target) continue;
               if (splash.hp <= 0) continue;
@@ -3933,6 +3614,22 @@ function updateProjectiles(dt) {
                 }
               }
             }
+          }
+        }
+        if (proj.supportBurnDps > 0 && proj.supportBurnDuration > 0 && !proj.target.darkMatter && !proj.target.immuneHeat) {
+          proj.target.burnTimer = Math.max(proj.target.burnTimer || 0, proj.supportBurnDuration);
+          proj.target.burnDps = Math.max(proj.target.burnDps || 0, proj.supportBurnDps);
+        }
+        if (proj.supportPoisonDps > 0 && proj.supportPoisonDuration > 0 && !proj.target.darkMatter) {
+          proj.target.dotTimer = Math.max(proj.target.dotTimer || 0, proj.supportPoisonDuration);
+          proj.target.dotDps = Math.max(proj.target.dotDps || 0, proj.supportPoisonDps);
+          if (proj.poisonTransfer) {
+            applyTransferredPoison(proj.target, {
+              poisonTransfer: true,
+              poisonDps: proj.supportPoisonDps,
+              poisonDuration: proj.supportPoisonDuration,
+              poisonTransferRadius: proj.supportPoisonTransferRadius || 70,
+            });
           }
         }
       }
@@ -3976,12 +3673,14 @@ function updateTraps(dt) {
       ttl: 0.35,
       color: "rgba(248, 113, 113, 0.6)",
     });
+    playAttackImpactSound("explosion");
     for (const splash of state.enemies) {
       if (splash.hp <= 0) continue;
       if (splash.flying) continue;
       const splashDist = Math.hypot(splash.x - trap.x, splash.y - trap.y);
       if (splashDist <= trap.splashRadius) {
         applyExplosionDamage(splash, trap.damage);
+        applySupportEffectsToEnemy(splash, trap.owner, { sourceType: "trap" });
         if (splash.hp <= 0) {
           handleEnemyDeath(splash);
         }
@@ -4032,6 +3731,9 @@ function updateTraps(dt) {
           }
         }
         if (target) {
+          const sentrySupport = trap.kind === "sentry"
+            ? getSupportEffectsForSource({ x: trap.x, y: trap.y, owner: trap.owner, kind: "sentry" }, { sourceType: "sentry" })
+            : null;
           for (let shot = 0; shot < (trap.dual ? 2 : 1); shot += 1) {
             state.projectiles.push({
               kind: "homing",
@@ -4041,10 +3743,17 @@ function updateTraps(dt) {
               speed: 320,
               damage: trap.turretDamage,
               slow: 0,
-              sourceType: "trap",
+              sourceType: trap.kind === "sentry" ? "sentry" : "trap",
+              owner: trap.kind === "sentry" ? { x: trap.x, y: trap.y, owner: trap.owner, kind: "sentry" } : trap.owner,
               poisonDps: 0,
               poisonDuration: 0,
               embrittlementPercent: 0,
+              poisonTransfer: Boolean(sentrySupport && sentrySupport.poisonTransfer),
+              supportBurnDps: sentrySupport ? sentrySupport.burnDps : 0,
+              supportBurnDuration: sentrySupport ? sentrySupport.burnDuration : 0,
+              supportPoisonDps: sentrySupport ? sentrySupport.poisonDps : 0,
+              supportPoisonDuration: sentrySupport ? sentrySupport.poisonDuration : 0,
+              supportPoisonTransferRadius: sentrySupport ? sentrySupport.poisonTransferRadius : 0,
             });
           }
           trap.cooldown = trap.turretRate;
@@ -4063,6 +3772,7 @@ function updateTraps(dt) {
           triggerTrapExplosion(trap);
         } else {
           applyDamage(enemy, trap.damage);
+          applySupportEffectsToEnemy(enemy, trap.owner, { sourceType: "trap" });
           if (trap.slow > 0 && !enemy.darkMatter) {
             enemy.slowTimer = Math.max(enemy.slowTimer, 1.5);
             enemy.slowFactor = Math.max(enemy.slowFactor || 0, trap.slow);
@@ -4086,20 +3796,65 @@ function updateTraps(dt) {
 }
 
 function updateTowerMovement(dt) {
+  function getDroneAvoidanceVector(tower, targetX, targetY, step) {
+    let avoidX = 0;
+    let avoidY = 0;
+    for (const enemy of state.enemies) {
+      if (enemy.hp <= 0) continue;
+      const dx = tower.x - enemy.x;
+      const dy = tower.y - enemy.y;
+      const dist = Math.hypot(dx, dy) || 0.001;
+      const minGap = getEnemyRadius(enemy) + (tower.isMini ? 14 : 18);
+      const avoidRadius = minGap + step + 6;
+      if (dist > avoidRadius) continue;
+      const weight = (avoidRadius - dist) / avoidRadius;
+      avoidX += (dx / dist) * weight * 1.5;
+      avoidY += (dy / dist) * weight * 1.5;
+      if (dist < minGap + 8) {
+        const tangentX = -dy / dist;
+        const tangentY = dx / dist;
+        const sign = ((targetX - enemy.x) * tangentX + (targetY - enemy.y) * tangentY) >= 0 ? 1 : -1;
+        avoidX += tangentX * sign * (0.9 + weight * 1.8);
+        avoidY += tangentY * sign * (0.9 + weight * 1.8);
+      }
+    }
+    return { x: avoidX, y: avoidY };
+  }
+
+  function moveDroneToward(tower, targetX, targetY, step) {
+    const dx = targetX - tower.x;
+    const dy = targetY - tower.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= 0.5) return;
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const avoidance = getDroneAvoidanceVector(tower, targetX, targetY, step);
+    const moveX = dirX + avoidance.x;
+    const moveY = dirY + avoidance.y;
+    const moveLen = Math.hypot(moveX, moveY) || 1;
+    let nextX = tower.x + (moveX / moveLen) * Math.min(step, dist);
+    let nextY = tower.y + (moveY / moveLen) * Math.min(step, dist);
+    for (const enemy of state.enemies) {
+      if (enemy.hp <= 0) continue;
+      const gap = getEnemyRadius(enemy) + (tower.isMini ? 12 : 16);
+      const ox = nextX - enemy.x;
+      const oy = nextY - enemy.y;
+      const overlap = Math.hypot(ox, oy);
+      if (overlap >= gap || overlap <= 0.001) continue;
+      nextX = enemy.x + (ox / overlap) * gap;
+      nextY = enemy.y + (oy / overlap) * gap;
+    }
+    tower.x = nextX;
+    tower.y = nextY;
+  }
+
   for (const tower of state.towers) {
     const data = towerTypes[tower.type];
     if (!data || !data.moveSpeed) continue;
     const level = tower.level || 1;
     const speedMultiplier = 1 + (level - 1) * 0.12;
     if (state.controlledDrone === tower) {
-      const dx = state.mouse.x - tower.x;
-      const dy = state.mouse.y - tower.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist > 0.5) {
-        const step = data.moveSpeed * speedMultiplier * 85 * dt;
-        tower.x += (dx / dist) * Math.min(step, dist);
-        tower.y += (dy / dist) * Math.min(step, dist);
-      }
+      moveDroneToward(tower, state.mouse.x, state.mouse.y, data.moveSpeed * speedMultiplier * 85 * dt);
       continue;
     }
     if (tower.forceReturn) {
@@ -4107,9 +3862,7 @@ function updateTowerMovement(dt) {
       const dy = tower.baseY - tower.y;
       const dist = Math.hypot(dx, dy);
       if (dist > 0.5) {
-        const step = data.moveSpeed * speedMultiplier * 70 * dt;
-        tower.x += (dx / dist) * Math.min(step, dist);
-        tower.y += (dy / dist) * Math.min(step, dist);
+        moveDroneToward(tower, tower.baseX, tower.baseY, data.moveSpeed * speedMultiplier * 70 * dt);
       } else {
         tower.x = tower.baseX;
         tower.y = tower.baseY;
@@ -4122,9 +3875,7 @@ function updateTowerMovement(dt) {
       const dy = tower.baseY - tower.y;
       const dist = Math.hypot(dx, dy);
       if (dist > 0.5) {
-        const step = data.moveSpeed * speedMultiplier * 70 * dt;
-        tower.x += (dx / dist) * Math.min(step, dist);
-        tower.y += (dy / dist) * Math.min(step, dist);
+        moveDroneToward(tower, tower.baseX, tower.baseY, data.moveSpeed * speedMultiplier * 70 * dt);
       } else {
         tower.x = tower.baseX;
         tower.y = tower.baseY;
@@ -4144,20 +3895,13 @@ function updateTowerMovement(dt) {
       }
     }
     if (target) {
-      const dx = target.x - tower.x;
-      const dy = target.y - tower.y;
-      const dist = Math.hypot(dx, dy) || 1;
-      const step = data.moveSpeed * speedMultiplier * 65 * dt;
-      tower.x += (dx / dist) * Math.min(step, dist);
-      tower.y += (dy / dist) * Math.min(step, dist);
+      moveDroneToward(tower, target.x, target.y, data.moveSpeed * speedMultiplier * 65 * dt);
     } else {
       const dx = tower.baseX - tower.x;
       const dy = tower.baseY - tower.y;
       const dist = Math.hypot(dx, dy);
       if (dist > 0.5) {
-        const step = data.moveSpeed * speedMultiplier * 55 * dt;
-        tower.x += (dx / dist) * Math.min(step, dist);
-        tower.y += (dy / dist) * Math.min(step, dist);
+        moveDroneToward(tower, tower.baseX, tower.baseY, data.moveSpeed * speedMultiplier * 55 * dt);
       }
     }
   }
@@ -4578,6 +4322,13 @@ function updateSpikeTower(tower, dt, stats) {
   const applySpikeEffects = (enemy, dmg, slowFactor, stunDuration) => {
     if (!enemy || enemy.hp <= 0) return;
     applyDamage(enemy, dmg);
+    if (dmg > 0) {
+      applySupportEffectsToEnemy(enemy, tower, { sourceType: "spikeTower" });
+      if (!tower.spikeAttackPlayed) {
+        tower.spikeAttackPlayed = true;
+        playAttackImpactSound();
+      }
+    }
     if (stunDuration && stunDuration > 0) {
       enemy.stunTimer = Math.max(enemy.stunTimer || 0, stunDuration);
     }
@@ -4670,6 +4421,7 @@ function updateSpikeTower(tower, dt, stats) {
     tower.spikePhase = "extend";
     tower.spikeProgress = 0;
     tower.spikeHit = false;
+    tower.spikeAttackPlayed = false;
     tower.spikeDrillTarget = null;
     tower.spikeDrillTimer = 0;
     return;
@@ -4771,9 +4523,8 @@ function updateTowers(dt) {
   if (state.nukeSmoke) {
     return;
   }
-  const poisonTower = state.towers.find((tower) => tower.type === "dart" && (tower.level || 1) >= 5 && tower.upgradePath === 1);
-  state.globalPoisonDps = poisonTower ? 3 : 0;
-  state.globalPoisonDuration = poisonTower ? 2.5 : 0;
+  state.globalPoisonDps = 0;
+  state.globalPoisonDuration = 0;
   state.factoryKillGoldBonus = 0;
   state.factoryKillLifeBonus = 0;
   for (const tower of state.towers) {
@@ -4782,6 +4533,16 @@ function updateTowers(dt) {
     const data = stats.data;
     if (tower.disabled || tower.stunTimer > 0) continue;
     if (data.isFactory) {
+      if (tower.factoryDisabled && tower.factoryRepairing) {
+        tower.factoryRepairTimer = Math.max(0, (tower.factoryRepairTimer || 0) - dt);
+        if (tower.factoryRepairTimer <= 0) {
+          tower.factoryRepairing = false;
+          tower.factoryDisabled = false;
+          tower.disabled = false;
+          tower.factoryTimer = Math.max(10, stats.factoryInterval || 60);
+          updateHud();
+        }
+      }
       if (!tower.factoryDisabled) {
         state.factoryKillGoldBonus += stats.factoryKillGoldBonus || 0;
         state.factoryKillLifeBonus += stats.factoryKillLifeBonus || 0;
@@ -4817,7 +4578,7 @@ function updateTowers(dt) {
       }
       continue;
     }
-    if (data.isMine || data.isFloorSpike || data.blocksPath) continue;
+    if (data.isMine || data.isFloorSpike || tower.type === "wall") continue;
     if (tower.type === "spikeTower") continue;
     if (tower.type === "drone" && stats.droneBombRate > 0) {
       tower.bombCooldown = Math.max(0, (tower.bombCooldown || 0) - dt);
@@ -4869,12 +4630,6 @@ function updateTowers(dt) {
       }
       continue;
     }
-    if (tower.type === "flame" && stats.flameContinuous) {
-      if (target) {
-        fireFlameCone(tower, target, stats);
-      }
-      continue;
-    }
     if (tower.cooldown > 0 && tower.type !== "freeze") continue;
     if (target) {
       if (tower.type === "drone" && stats.droneBombRate > 0 && (tower.bombCooldown || 0) <= 0) {
@@ -4887,6 +4642,7 @@ function updateTowers(dt) {
           ttl: 0.35,
           color: "rgba(251, 146, 60, 0.6)",
         });
+        playAttackImpactSound("explosion");
         for (const enemy of state.enemies) {
           if (enemy.hp <= 0) continue;
           const dist = Math.hypot(enemy.x - dropX, enemy.y - dropY);
@@ -4919,16 +4675,6 @@ function updateTowers(dt) {
         lingering.maxTtl = Math.max(lingering.maxTtl || 0, lingering.ttl);
       }
     }
-  }
-}
-
-function updateSpikeTowers(dt) {
-  for (const tower of state.towers) {
-    if (tower.type !== "spikeTower") continue;
-    if (tower.disabled || tower.stunTimer > 0) continue;
-    const stats = getTowerStats(tower);
-    if (!stats) continue;
-    updateSpikeTower(tower, dt, stats);
   }
 }
 
@@ -4975,6 +4721,7 @@ function updateFloorSpikes(dt) {
         spike.spikeProgress = 0;
         spike.spikeHit = false;
         spike.spikeShot = false;
+        spike.spikeAttackPlayed = false;
       }
       continue;
     }
@@ -5001,8 +4748,14 @@ function updateFloorSpikes(dt) {
       const target = findTarget();
       if (target && !spike.spikeHit && next >= 0.65) {
         applyDamage(target, damage);
+        applySupportEffectsToEnemy(target, spike, { sourceType: "floorSpike" });
+        if (!spike.spikeAttackPlayed) {
+          spike.spikeAttackPlayed = true;
+          playAttackImpactSound();
+        }
         spike.spikeHit = true;
         if (shooter && !spike.spikeShot) {
+          const supportEffects = getSupportEffectsForSource(spike, { sourceType: "floorSpike" });
           for (let i = 0; i < shotCount; i += 1) {
             state.projectiles.push({
               kind: "spikeShot",
@@ -5013,7 +4766,14 @@ function updateFloorSpikes(dt) {
               damage: shotDamage,
               slow: 0,
               sourceType: "floorSpike",
+              owner: spike,
               ttl: shotTtl,
+              supportBurnDps: supportEffects.burnDps,
+              supportBurnDuration: supportEffects.burnDuration,
+              supportPoisonDps: supportEffects.poisonDps,
+              supportPoisonDuration: supportEffects.poisonDuration,
+              poisonTransfer: supportEffects.poisonTransfer,
+              supportPoisonTransferRadius: supportEffects.poisonTransferRadius,
             });
           }
           spike.spikeShot = true;
@@ -5090,6 +4850,16 @@ function isBlockedBySpike(enemy) {
   return false;
 }
 
+function updateSpikeTowers(dt) {
+  for (const tower of state.towers) {
+    if (tower.type !== "spikeTower") continue;
+    if (tower.disabled || tower.stunTimer > 0) continue;
+    const stats = getTowerStats(tower);
+    if (!stats) continue;
+    updateSpikeTower(tower, dt, stats);
+  }
+}
+
 function spawnBroodlets(origin, count) {
   const pathGroup = Number.isFinite(origin.pathGroup) ? origin.pathGroup : 0;
   const fallbackPaths = getActivePaths();
@@ -5116,6 +4886,9 @@ function spawnBroodlets(origin, count) {
 function updateEnemies(dt) {
   for (const enemy of state.enemies) {
     enemy.umbrellaShielded = false;
+    if (enemy.hitFlashTimer > 0) {
+      enemy.hitFlashTimer = Math.max(0, enemy.hitFlashTimer - dt);
+    }
     if (enemy.tempBuffTimer > 0) {
       enemy.tempBuffTimer = Math.max(0, enemy.tempBuffTimer - dt);
       enemy.buffed = true;
@@ -5160,6 +4933,25 @@ function updateEnemies(dt) {
           }
           break;
         }
+      }
+    }
+    if (tower.type === "factory") {
+      const path = tower.upgradePath || 1;
+      const tier = Math.min(level, 5);
+      factoryGold = 1;
+      factoryLife = 0;
+      if (path === 1) {
+        if (tier >= 1) factoryGold = 2;
+        if (tier >= 2) factoryGold = 4;
+        if (tier >= 3) factoryKillGoldBonus = 2;
+        if (tier >= 4) factoryLifeDrop = 1;
+        if (tier >= 5) factoryLifeDrop = 5;
+      } else {
+        if (tier >= 1) factoryLife = 1;
+        if (tier >= 2) factoryLife = 2;
+        if (tier >= 3) factoryKillLifeBonus = 1;
+        if (tier >= 4) factoryGoldDropMult = 2;
+        if (tier >= 5) factoryGoldDropMult = 4;
       }
     }
   }
@@ -5272,6 +5064,10 @@ function updateEnemies(dt) {
         continue;
       }
     }
+    if (enemy.stallTimer > 0) {
+      enemy.stallTimer = Math.max(0, enemy.stallTimer - dt);
+      continue;
+    }
     if (isBlockedBySpike(enemy)) {
       enemy.stunTimer = Math.max(enemy.stunTimer || 0, 0.05);
       continue;
@@ -5282,7 +5078,8 @@ function updateEnemies(dt) {
     if (!pathPoints || pathPoints.length < 2) continue;
     if (enemy.troll) {
       enemy.backtrackCooldown = Math.max(0, (enemy.backtrackCooldown || 0) - dt);
-      if (enemy.backtrackCooldown <= 0 && Math.random() < 0.08) {
+      const progress = getEnemyProgress(enemy);
+      if (enemy.backtrackCooldown <= 0 && progress >= 1.25 && (enemy.pathIndex || 0) > 1 && Math.random() < 0.08) {
         enemy.backtrackTimer = 0.6;
         enemy.backtrackCooldown = 2.2;
       }
@@ -5318,17 +5115,17 @@ function updateEnemies(dt) {
     } else {
       const vx = (dx / dist) * step;
       const vy = (dy / dist) * step;
-      enemy.x += vx;
-      enemy.y += vy;
+      const nextX = enemy.x + vx;
+      const nextY = enemy.y + vy;
+      const blocker = findBlockingEnemy(enemy, nextX, nextY);
+      if (blocker) {
+        enemy.stallTimer = Math.max(enemy.stallTimer || 0, 0.06);
+        continue;
+      }
+      enemy.x = nextX;
+      enemy.y = nextY;
       enemy.facing = Math.atan2(vy, vx);
     }
-  }
-}
-
-function disableFactories() {
-  for (const tower of state.towers) {
-    if (tower.type !== "factory") continue;
-    tower.factoryDisabled = true;
   }
 }
 
@@ -5355,12 +5152,14 @@ function updateMines() {
           ttl: 0.35,
           color: "rgba(163, 230, 53, 0.6)",
         });
+        playAttackImpactSound("explosion");
         for (const target of state.enemies) {
           if (target.hp <= 0) continue;
           if (target.flying) continue;
           const splashDist = Math.hypot(target.x - tower.x, target.y - tower.y);
           if (splashDist <= data.splashRadius) {
             applyExplosionDamage(target, data.damage);
+            applySupportEffectsToEnemy(target, tower, { sourceType: "mine" });
             if (target.hp <= 0) {
               handleEnemyDeath(target);
             }
@@ -5536,10 +5335,35 @@ function applyDamage(enemy, amount) {
   const buffMult = enemy.buffed ? 0.7 : 1;
   const scaled = amount * multiplier * buffMult;
   const applied = Math.max(0, Math.min(enemy.hp, scaled));
+  if (applied > 0) {
+    enemy.hitFlashTimer = Math.max(enemy.hitFlashTimer || 0, 0.11);
+    enemy.hitFlashColor = scaled >= enemy.hp ? "rgba(255, 110, 110, 0.9)" : "rgba(255, 255, 255, 0.9)";
+  }
   state.totalDamage += applied;
   enemy.hp -= scaled;
   if (enemy.hp <= 0) {
     handleEnemyDeath(enemy);
+  }
+}
+
+function tryDragPlaceAt(x, y) {
+  if (!state.placing) return;
+  const snapped = snapToGrid(x, y);
+  const cell = worldToCell(snapped.x, snapped.y);
+  const key = cellKey(cell.cx, cell.cy);
+  if (state.dragPlaceKey === key) return;
+  state.dragPlaceKey = key;
+  const towersHere = state.towers.filter((tower) => Math.hypot(tower.x - snapped.x, tower.y - snapped.y) < 20 && !tower.isMini);
+  if (towersHere.length > 0) return;
+  placeTower(state.placing, snapped.x, snapped.y);
+}
+
+function disableFactories() {
+  for (const tower of state.towers) {
+    if (tower.type !== "factory") continue;
+    tower.factoryDisabled = true;
+    tower.factoryRepairing = false;
+    tower.factoryRepairTimer = 0;
   }
 }
 
@@ -5617,6 +5441,7 @@ function handleEnemyDeath(enemy) {
   if (enemy.deadProcessed) return;
   enemy.deadProcessed = true;
   if (enemy.escaped) return;
+  playSound("death");
   const bonusGold = state.factoryKillGoldBonus || 0;
   const bonusLives = state.factoryKillLifeBonus || 0;
   const dropLives = enemy.dropLives || 0;
@@ -5819,6 +5644,7 @@ function predictEnemyPosition(enemy, travelTime) {
 }
 
 function launchNukeFrom(x, y) {
+  playSound("nukeLaunch");
   const closest = getClosestEnemyTarget(x, y);
   const flightDuration = 3.4;
   const predicted = closest ? predictEnemyPosition(closest, flightDuration) : null;
@@ -5860,8 +5686,8 @@ function updateNukeLaunches(dt) {
   for (const launch of state.nukeLaunches) {
     launch.age += dt;
     const progress = Math.min(1, launch.age / launch.duration);
-    const pos = quadraticBezier(launch.start, launch.control, launch.end, progress);
-    const tangent = quadraticBezierTangent(launch.start, launch.control, launch.end, progress);
+    const pos = effectQuadraticBezier(launch.start, launch.control, launch.end, progress);
+    const tangent = effectQuadraticBezierTangent(launch.start, launch.control, launch.end, progress);
     const angle = Math.atan2(tangent.y, tangent.x);
     launch.x = pos.x;
     launch.y = pos.y;
@@ -5896,6 +5722,13 @@ function updateNukeLaunches(dt) {
         expanding: true,
       };
       triggerScreenShake(18, 0.7);
+      playSound("nuke");
+      state.enemiesToSpawn = 0;
+      state.waveInProgress = false;
+      for (const enemy of state.enemies) {
+        enemy.hp = 0;
+      }
+      state.enemies = [];
       state.radioactiveWave = state.wave + 1;
       state.encyclopedia.add("radioactive");
       updateEncyclopedia();
@@ -5912,16 +5745,20 @@ function updateSpawner(dt) {
   if (!state.waveInProgress) return;
   state.spawnTimer -= dt * state.waveSpeed;
   if (state.spawnTimer <= 0 && state.enemiesToSpawn > 0) {
-    spawnEnemy();
-    updateEnemyPaths();
-    state.enemiesToSpawn -= 1;
-    state.spawnTimer = 1.1 / state.waveSpeed;
+    const spawned = spawnEnemy();
+    if (spawned) {
+      state.enemiesToSpawn -= 1;
+      state.spawnTimer = 1.1 / state.waveSpeed;
+    } else {
+      state.spawnTimer = 0.08;
+    }
   }
   if (state.enemiesToSpawn === 0 && state.enemies.length === 0) {
     state.waveInProgress = false;
     if (state.radioactiveWave === state.wave) {
       state.radioactiveWave = null;
     }
+    checkSecretAchievement();
     handleWaveAlerts(state.wave + 1);
   }
 }
@@ -6301,6 +6138,14 @@ function drawMines() {
   for (const tower of state.towers) {
     const data = towerTypes[tower.type];
     if (!data || (!data.isMine && !data.isFloorSpike)) continue;
+    const supportEffects = tower.type === "floorSpike" ? getSupportEffectsForSource(tower, { sourceType: "floorSpike" }) : null;
+    const spawnAlpha = tower.spawnInTimer > 0 ? 1 - tower.spawnInTimer / 0.18 : 1;
+    const spawnScale = tower.spawnInTimer > 0 ? 0.82 + spawnAlpha * 0.18 : 1;
+    ctx.save();
+    ctx.translate(tower.x, tower.y);
+    ctx.scale(spawnScale, spawnScale);
+    ctx.translate(-tower.x, -tower.y);
+    ctx.globalAlpha = Math.max(0.35, spawnAlpha);
     if (data.isMine) {
       const base = data.color || "#a3e635";
       const stroke = shadeColor(base, 0.55);
@@ -6319,6 +6164,7 @@ function drawMines() {
       ctx.moveTo(tower.x - 6, tower.y);
       ctx.lineTo(tower.x + 6, tower.y);
       ctx.stroke();
+      ctx.restore();
       continue;
     }
     const base = data.color || "#f97316";
@@ -6328,16 +6174,18 @@ function drawMines() {
     const burnDps = (stats && stats.floorSpikeBurnDps) || 0;
     const fiery = burnDps > 0 || tower.isFiery;
     const height = 5 + 12 * progress;
-    ctx.fillStyle = shadeColor(base, fiery ? 0.8 : 0.5);
+    const heated = fiery || (supportEffects && supportEffects.burnDps > 0);
+    const poisoned = supportEffects && supportEffects.poisonDps > 0;
+    ctx.fillStyle = shadeColor(heated ? "#fb7185" : base, heated ? 0.9 : 0.5);
     ctx.beginPath();
     ctx.arc(tower.x, tower.y, 16, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = fiery ? "rgba(251, 113, 133, 0.85)" : stroke;
+    ctx.strokeStyle = heated ? "rgba(251, 113, 133, 0.9)" : stroke;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(tower.x, tower.y, 14, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = shadeColor(base, fiery ? 1.45 : 1.15);
+    ctx.fillStyle = shadeColor(heated ? "#fb7185" : base, heated ? 1.28 : 1.15);
     const offsets = [-10, -5, 0, 5, 10];
     for (const ox of offsets) {
       for (const oy of offsets) {
@@ -6349,15 +6197,23 @@ function drawMines() {
         ctx.lineTo(sx, sy + 4 - height);
         ctx.closePath();
         ctx.fill();
+        if (poisoned) {
+          ctx.fillStyle = "rgba(168, 85, 247, 0.9)";
+          ctx.beginPath();
+          ctx.arc(sx, sy + 4 - height + 1, 1.4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = shadeColor(heated ? "#fb7185" : base, heated ? 1.28 : 1.15);
+        }
       }
     }
-    if (fiery) {
+    if (heated) {
       ctx.strokeStyle = "rgba(249, 115, 22, 0.75)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(tower.x, tower.y, 18 + Math.sin(performance.now() / 180) * 2, 0, Math.PI * 2);
       ctx.stroke();
     }
+    ctx.restore();
   }
 }
 
@@ -6393,6 +6249,14 @@ function drawTowers() {
   for (const tower of state.towers) {
     const data = towerTypes[tower.type];
     if (!data) continue;
+    const supportEffects = getSupportEffectsForSource(tower, { sourceType: tower.type });
+    const spawnAlpha = tower.spawnInTimer > 0 ? 1 - tower.spawnInTimer / 0.18 : 1;
+    const spawnScale = tower.spawnInTimer > 0 ? 0.82 + spawnAlpha * 0.18 : 1;
+    ctx.save();
+    ctx.translate(tower.x, tower.y);
+    ctx.scale(spawnScale, spawnScale);
+    ctx.translate(-tower.x, -tower.y);
+    ctx.globalAlpha = Math.max(0.35, spawnAlpha);
     if (tower.type === "wall") {
       ctx.fillStyle = "rgba(12, 18, 35, 0.95)";
       ctx.fillRect(tower.x - 16, tower.y - 16, 32, 32);
@@ -6407,11 +6271,20 @@ function drawTowers() {
       ctx.moveTo(tower.x - 12, tower.y);
       ctx.lineTo(tower.x + 12, tower.y);
       ctx.stroke();
+      ctx.restore();
       continue;
     }
-    if (data.isMine || data.isFloorSpike) continue;
+    if (data.isMine || data.isFloorSpike) {
+      ctx.restore();
+      continue;
+    }
 
-    const base = data.color || "#e2e8f0";
+    let base = data.color || "#e2e8f0";
+    if (tower.type === "factory" && (tower.factoryDisabled || tower.disabled)) {
+      base = "#94a3b8";
+    } else if (tower.type === "spikeTower" && supportEffects.burnDps > 0) {
+      base = "#fb7185";
+    }
     const stroke = shadeColor(base, 0.55);
     const aim = coalesce(tower.aimAngle, tower.facing, 0);
 
@@ -6472,6 +6345,13 @@ function drawTowers() {
           }
           ctx.closePath();
           ctx.fill();
+          if (supportEffects.poisonDps > 0) {
+            ctx.fillStyle = "rgba(168, 85, 247, 0.92)";
+            ctx.beginPath();
+            ctx.arc(tipX, tipY, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = shadeColor(base, 1.1);
+          }
         }
       }
     } else if (tower.type === "factory") {
@@ -6567,12 +6447,21 @@ function drawTowers() {
     if (tower === state.selectedTower) {
       const stats = getTowerStats(tower);
       const range = stats ? stats.range : data.range;
+      ctx.shadowColor = "rgba(245, 158, 11, 0.9)";
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = "rgba(251, 191, 36, 0.85)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(tower.x, tower.y, 22, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
       ctx.strokeStyle = "rgba(245, 158, 11, 0.3)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(tower.x, tower.y, range, 0, Math.PI * 2);
       ctx.stroke();
     }
+    ctx.restore();
   }
 }
 
@@ -6815,6 +6704,15 @@ function drawEnemies() {
     } else {
       drawSphere(pos.x, pos.y, radius, baseColor);
     }
+    if (enemy.hitFlashTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.8, enemy.hitFlashTimer / 0.11);
+      ctx.fillStyle = enemy.hitFlashColor || "rgba(255, 255, 255, 0.85)";
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     if (enemy.tier > 1) {
       ctx.strokeStyle = "rgba(15, 23, 42, 0.5)";
       ctx.lineWidth = 2;
@@ -6856,6 +6754,21 @@ function drawEnemies() {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 4, 0, Math.PI * 2);
       ctx.stroke();
+      const flamePulse = performance.now() / 180;
+      for (let i = 0; i < 4; i += 1) {
+        const angle = flamePulse + i * (Math.PI / 2);
+        const fx = pos.x + Math.cos(angle) * (radius * 0.72);
+        const fy = pos.y + Math.sin(angle) * (radius * 0.58) - 2;
+        const size = 3 + ((i + Math.sin(flamePulse + i)) % 2);
+        const grad = ctx.createRadialGradient(fx, fy, size * 0.15, fx, fy, size * 1.6);
+        grad.addColorStop(0, "rgba(255, 214, 153, 0.95)");
+        grad.addColorStop(0.45, "rgba(249, 115, 22, 0.8)");
+        grad.addColorStop(1, "rgba(69, 26, 3, 0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(fx, fy, size * 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     if (enemy.dotTimer > 0) {
@@ -6936,10 +6849,23 @@ function drawProjectiles() {
       continue;
     }
     if (proj.kind === "bomb") {
+      const vx = proj.vx || 1;
+      const vy = proj.vy || 0;
+      const angle = Math.atan2(vy, vx);
+      ctx.save();
+      ctx.translate(proj.x, proj.y);
+      ctx.rotate(angle + Math.PI * 0.2);
       ctx.fillStyle = "#fb7185";
       ctx.beginPath();
-      ctx.arc(proj.x, proj.y, 6, 0, Math.PI * 2);
+      ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = "#7f1d1d";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-2, -5);
+      ctx.lineTo(3, -7);
+      ctx.stroke();
+      ctx.restore();
       continue;
     }
     if (proj.kind === "rocket") {
@@ -7005,6 +6931,50 @@ function drawProjectiles() {
       ctx.lineTo(-6, -3);
       ctx.closePath();
       ctx.fill();
+      ctx.restore();
+      continue;
+    }
+    if (proj.kind === "homing") {
+      const vx = proj.vx || 1;
+      const vy = proj.vy || 0;
+      const angle = Math.atan2(vy, vx);
+      ctx.save();
+      ctx.translate(proj.x, proj.y);
+      ctx.rotate(angle);
+      if (proj.sourceType === "dart") {
+        ctx.fillStyle = "#f8fafc";
+        ctx.beginPath();
+        ctx.moveTo(9, 0);
+        ctx.lineTo(-7, 1.5);
+        ctx.lineTo(-7, -1.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#a855f7";
+        ctx.beginPath();
+        ctx.arc(8, 0, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (proj.sourceType === "drone") {
+        ctx.strokeStyle = "#34d399";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-6, 0);
+        ctx.lineTo(7, 0);
+        ctx.stroke();
+        ctx.fillStyle = "#86efac";
+        ctx.beginPath();
+        ctx.arc(7, 0, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (proj.sourceType === "secret") {
+        ctx.fillStyle = "#f472b6";
+        ctx.beginPath();
+        ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = proj.slow > 0 ? "#38bdf8" : "#facc15";
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
       continue;
     }
@@ -7231,6 +7201,11 @@ function update(dt) {
     return;
   }
   const simDt = dt * (state.waveSpeed || 1);
+  for (const tower of state.towers) {
+    if (tower.spawnInTimer > 0) {
+      tower.spawnInTimer = Math.max(0, tower.spawnInTimer - dt);
+    }
+  }
   state.damageFlashCooldown = Math.max(0, state.damageFlashCooldown - dt);
   if (state.lives < state.lastLives && state.damageFlashCooldown <= 0 && !state.damageFlashActive) {
     state.damageFlashActive = true;
@@ -7251,6 +7226,7 @@ function update(dt) {
   if (!state.waveInProgress && state.autoWave) {
     startWave();
   }
+  refreshAuraSnapshot();
   updateSpawner(dt);
   updateEnemies(simDt);
   updateSpikeTowers(simDt);
@@ -7259,6 +7235,7 @@ function update(dt) {
   updateTrapSetters(simDt);
   updateTraps(simDt);
   updateTowers(simDt);
+  resolveDynamicOverlaps();
   if (state.enemies.length > 0) {
     for (const tower of state.towers) {
       const stats = getTowerStats(tower);
@@ -7455,6 +7432,18 @@ if (ui.buildFloorSpike) {
   });
 }
 
+if (ui.buildSecret) {
+  ui.buildSecret.addEventListener("click", () => {
+    if (!state.secretTowerUnlocked) return;
+    const cost = towerTypes.secret.cost;
+    if (!canAfford(cost)) {
+      flashButton(buildButtons.secret);
+      return;
+    }
+    togglePlacing("secret");
+  });
+}
+
 if (ui.buildWall) {
   ui.buildWall.addEventListener("click", () => {
     const cost = towerTypes.wall.cost;
@@ -7487,6 +7476,7 @@ if (ui.pauseWave) {
 if (ui.nukeButton) {
   ui.nukeButton.addEventListener("click", () => {
     if (state.nukeCharges <= 0) return;
+    state.enemiesToSpawn = 0;
     const source = getClosestMaxBombTowerToCenter();
     if (source) {
       launchNukeFrom(source.x, source.y - 20);
@@ -7509,6 +7499,11 @@ if (ui.upgradePanel) {
     const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : undefined;
     if (tag === "input" || tag === "button" || tag === "select" || tag === "label") return;
     if (state.selectedTower) {
+      if (state.selectedTower.type === "factory" && state.selectedTower.factoryDisabled) {
+        startFactoryRepair(state.selectedTower);
+        updateUpgradePanel();
+        return;
+      }
       const delta = ui.upgradeTarget ? Number(ui.upgradeTarget.value) : 1;
       if (Number.isFinite(delta) && delta > 1) {
         upgradeTowerByValue(state.selectedTower, delta);
@@ -7519,12 +7514,17 @@ if (ui.upgradePanel) {
   });
 }
 
-  if (ui.upgradeTo) {
+if (ui.upgradeTo) {
   ui.upgradeTo.addEventListener("click", (event) => {
     event.stopPropagation();
     const tower = state.selectedTower;
     if (!tower) return;
     if (tower.type === "wall" || tower.type === "mine") return;
+    if (tower.type === "factory" && tower.factoryDisabled) {
+      startFactoryRepair(tower);
+      updateUpgradePanel();
+      return;
+    }
     if (tower.type === "bomb" && (tower.level || 1) >= state.towerLevelCap) return;
     const current = tower.level || 1;
     const targetRaw = Number(ui.upgradeTarget ? ui.upgradeTarget.value : 1);
@@ -7764,6 +7764,9 @@ if (ui.autoWave) {
   ui.autoWave.addEventListener("click", () => {
     state.autoWave = !state.autoWave;
     ui.autoWave.textContent = `Auto Next Wave: ${state.autoWave ? "On" : "Off"}`;
+    if (state.autoWave && ui.alertModal) {
+      ui.alertModal.classList.add("hidden");
+    }
   });
 }
 
@@ -7949,18 +7952,23 @@ if (ui.jasperApplyStats) {
       for (let i = 0; i < count; i += 1) {
         if (type === "swarm") {
           registerEnemyInEncyclopedia(type, armored, darkMatter);
+          const pathGroup = coalesce(chooseOpenSpawnPathGroup(), 0);
           for (let j = 0; j < 20; j += 1) {
-            state.enemies.push(createEnemy("swarmlet", { armored: false, darkMatter: false, stealth: false }));
+            state.enemies.push(createEnemy("swarmlet", { armored: false, darkMatter: false, stealth: false, pathGroup }));
           }
           continue;
         }
         registerEnemyInEncyclopedia(type, armored, darkMatter, stealth);
-        state.enemies.push(createEnemy(type, { armored, darkMatter, onFlame, poisoned, radioactive, stealth }));
+        state.enemies.push(createEnemy(type, { armored, darkMatter, onFlame, poisoned, radioactive, stealth, pathGroup: coalesce(chooseOpenSpawnPathGroup(), 0) }));
       }
     });
   }
 
 const mapButtons = titleScreen ? Array.from(titleScreen.querySelectorAll("[data-map]")) : [];
+const easyButton = document.getElementById("easy-btn");
+const mediumButton = document.getElementById("medium-btn");
+const hardButton = document.getElementById("hard-btn");
+const tutorialButton = document.getElementById("tutorial-btn");
 
 const selectMap = (mapId) => {
   setActiveMap(mapId);
@@ -7981,15 +7989,22 @@ const selectDifficulty = (difficulty) => {
   }
   state.difficulty = difficulty;
   state.gameStarted = true;
+  if (difficulty === "hard" && ui.alertModal) {
+    ui.alertModal.classList.add("hidden");
+  }
   if (titleScreen) titleScreen.classList.add("hidden");
   if (ui.gameOver) ui.gameOver.classList.add("hidden");
   recomputeGlobalPath();
   updateHud();
   handleWaveAlerts(1);
 };
-if (titleScreen) {
-  const buttons = titleScreen.querySelectorAll("[data-difficulty]");
-  buttons.forEach((button) => {
+function setupTitleScreenControls() {
+  if (!titleScreen) {
+    console.error("title-screen missing");
+    return;
+  }
+  const difficultyButtons = titleScreen.querySelectorAll("[data-difficulty]");
+  difficultyButtons.forEach((button) => {
     const handler = (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -8000,20 +8015,39 @@ if (titleScreen) {
     button.addEventListener("click", handler);
     button.addEventListener("pointerdown", handler);
   });
-  if (mapButtons.length > 0) {
-    mapButtons.forEach((button) => {
-      const handler = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const mapId = button.dataset.map;
-        if (!mapId) return;
-        selectMap(mapId);
-      };
-      button.addEventListener("click", handler);
-      button.addEventListener("pointerdown", handler);
-    });
+  mapButtons.forEach((button) => {
+    const handler = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const mapId = button.dataset.map;
+      if (!mapId) return;
+      selectMap(mapId);
+    };
+    button.addEventListener("click", handler);
+    button.addEventListener("pointerdown", handler);
+  });
+  for (const [button, difficulty, id] of [[easyButton, "easy", "easy-btn"], [mediumButton, "medium", "medium-btn"], [hardButton, "hard", "hard-btn"]]) {
+    if (!button) {
+      console.error(`${id} missing`);
+      continue;
+    }
+    const handler = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectDifficulty(difficulty);
+    };
+    button.addEventListener("click", handler);
+    button.addEventListener("pointerdown", handler);
+  }
+  if (!tutorialButton) {
+    console.error("tutorial-btn missing");
+  } else {
+    tutorialButton.addEventListener("click", openTutorialModal);
+    tutorialButton.addEventListener("pointerdown", openTutorialModal);
   }
 }
+
+setupTitleScreenControls();
 
 const handleTitleScreenPointer = (event) => {
   if (!titleScreen || titleScreen.classList.contains("hidden")) return;
@@ -8039,7 +8073,7 @@ const handleTitleScreenPointer = (event) => {
     }
     return;
   }
-  const tutorialButton = target.closest("#open-tutorial");
+  const tutorialButton = target.closest("#tutorial-btn");
   if (tutorialButton && titleScreen.contains(tutorialButton)) {
     openTutorialModal(event);
   }
@@ -8050,6 +8084,7 @@ document.addEventListener("pointerdown", handleTitleScreenPointer, true);
 document.addEventListener("touchstart", handleTitleScreenPointer, { capture: true, passive: false });
 
 document.addEventListener("keydown", (event) => {
+  console.debug("[title-key]", event.key);
   if (!titleScreen || titleScreen.classList.contains("hidden")) return;
   if (event.key === "1") {
     selectDifficulty("easy");
@@ -8057,7 +8092,7 @@ document.addEventListener("keydown", (event) => {
     selectDifficulty("medium");
   } else if (event.key === "3") {
     selectDifficulty("hard");
-  } else if (event.key.toLowerCase() === "t") {
+  } else if (event.key === "4" || event.key.toLowerCase() === "t") {
     openTutorialModal(event);
   }
 });
@@ -8113,6 +8148,7 @@ function resetGame() {
   state.radioactiveWave = null;
   state.nukeUsed = false;
   state.nukeCharges = 0;
+  state.radioactiveFactoryBonus = 0;
   state.selectedTrap = null;
   state.spawnTimer = 0;
   state.enemiesToSpawn = 0;
@@ -8126,6 +8162,7 @@ function resetGame() {
   state.encyclopedia.clear();
   state.revealStealth = false;
   state.autoWave = false;
+  state.auraSnapshot = null;
   state.waveSpeed = 1;
   state.towerLevelCap = 5;
   state.infiniteGold = false;
@@ -8139,6 +8176,7 @@ function resetGame() {
   if (ui.setWave) ui.setWave.value = "1";
   if (ui.buildOp) ui.buildOp.classList.add("hidden");
   if (ui.buildOp) ui.buildOp.disabled = false;
+  if (ui.buildSecret) ui.buildSecret.classList.toggle("hidden", !state.secretTowerUnlocked);
   if (ui.openJasper) ui.openJasper.classList.add("hidden");
   if (ui.pauseWave) ui.pauseWave.textContent = "Pause Wave";
   if (ui.playArea) ui.playArea.classList.remove("paused-glitch");
@@ -8234,6 +8272,7 @@ function setJasperEnabled(enabled) {
   }
   if (enabled) {
     unlockFullEncyclopedia();
+    unlockSecretTower(false);
   }
 }
 
@@ -8368,11 +8407,15 @@ canvas.addEventListener("dblclick", () => {
 
 canvas.addEventListener("mousedown", (event) => {
   if (event.button === 0 && state.placing) {
-    state.dragPlacing = true;
-    state.dragPlaceKey = null;
     const rect = canvas.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
     const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const hasPlacedTower = state.towers.some((tower) => !tower.isMini && Math.hypot(tower.x - x, tower.y - y) < 20);
+    if (hasPlacedTower) {
+      return;
+    }
+    state.dragPlacing = true;
+    state.dragPlaceKey = null;
     tryDragPlaceAt(x, y);
     return;
   }
@@ -8442,8 +8485,10 @@ updateHud();
 requestAnimationFrame(loop);
 };
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
-} else {
+document.addEventListener("DOMContentLoaded", () => {
+  boot();
+});
+
+if (document.readyState !== "loading") {
   boot();
 }

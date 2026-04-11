@@ -6,8 +6,13 @@ const distDir = path.join(root, "dist");
 
 const filesToCopy = [
   "index.html",
+  "index.js",
   "styles.css",
   "game.js",
+  "game-enemies.js",
+  "game-effects.js",
+  "game-audio.js",
+  "game-data",
   "assets",
 ];
 

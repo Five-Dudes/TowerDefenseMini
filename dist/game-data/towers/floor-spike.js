@@ -1,0 +1,1 @@
+window.TDMData.registerTower("floorSpike", { cost: 60, range: 0, rate: 0, damage: 5, color: "#f97316", slow: 0, allowOnPath: true, isFloorSpike: true, noGridlock: true, triggerRadius: 18, spikeExtendSpeed: 10, spikeRetractSpeed: 7, spikeHold: 0.2 });
