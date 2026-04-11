@@ -3106,6 +3106,9 @@ function fireProjectile(tower, enemy, stats) {
         clusterRadius: stats.bombClusterRadius || 0,
         clusterChildDamage: stats.bombClusterChildDamage || 0,
         clusterChildRadius: stats.bombClusterChildRadius || 0,
+        age: 0,
+        spin: Math.random() * Math.PI * 2,
+        spinSpeed: 12 + Math.random() * 8,
       });
     }
     return;
@@ -3449,6 +3452,7 @@ function updateProjectiles(dt) {
         proj.ttl -= dt;
         if (proj.ttl <= 0) return false;
       }
+      proj.age = (proj.age || 0) + dt;
       const isMissile = proj.kind === "missile" || proj.kind === "rocket";
       const targetPos = proj.target && proj.target.hp > 0 ? getEnemyPosition(proj.target) : proj.targetPos;
       if (!targetPos) return false;
@@ -3515,6 +3519,9 @@ function updateProjectiles(dt) {
                 clusterChildCount: 0,
                 clusterChildDamage: 0,
                 clusterChildRadius: 0,
+                age: 0,
+                spin: Math.random() * Math.PI * 2,
+                spinSpeed: 12 + Math.random() * 8,
               });
             }
           };
@@ -6862,7 +6869,7 @@ function drawProjectiles() {
       const angle = Math.atan2(vy, vx);
       ctx.save();
       ctx.translate(proj.x, proj.y);
-      ctx.rotate(angle + Math.PI * 0.2);
+      ctx.rotate(angle + (proj.spin || 0) + (proj.age || 0) * (proj.spinSpeed || 0));
       if (grenadeImage.complete && grenadeImage.naturalWidth) {
         const size = 22;
         ctx.drawImage(grenadeImage, -size * 0.5, -size * 0.5, size, size);
