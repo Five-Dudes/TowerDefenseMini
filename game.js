@@ -6754,19 +6754,25 @@ function drawEnemies() {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 4, 0, Math.PI * 2);
       ctx.stroke();
-      const flamePulse = performance.now() / 180;
-      for (let i = 0; i < 4; i += 1) {
-        const angle = flamePulse + i * (Math.PI / 2);
-        const fx = pos.x + Math.cos(angle) * (radius * 0.72);
-        const fy = pos.y + Math.sin(angle) * (radius * 0.58) - 2;
-        const size = 3 + ((i + Math.sin(flamePulse + i)) % 2);
-        const grad = ctx.createRadialGradient(fx, fy, size * 0.15, fx, fy, size * 1.6);
-        grad.addColorStop(0, "rgba(255, 214, 153, 0.95)");
-        grad.addColorStop(0.45, "rgba(249, 115, 22, 0.8)");
+      const burnStrength = Math.min(1, enemy.burnTimer / 2.5);
+      const particleCount = 7 + Math.round(radius * 0.35);
+      const rise = performance.now() / 90;
+      for (let i = 0; i < particleCount; i += 1) {
+        const phase = (i / particleCount) * Math.PI * 2;
+        const sway = Math.sin(rise + phase * 2.4);
+        const lift = (rise * 0.9 + i * 0.23) % 1;
+        const fx = pos.x + Math.cos(phase) * (radius * 0.45 + sway * 2.5);
+        const fy = pos.y + radius * 0.6 - lift * (radius * 1.8 + 14);
+        const size = (2.2 + (1 - lift) * 3.4) * (0.8 + burnStrength * 0.4);
+        const alpha = (1 - lift) * (0.5 + burnStrength * 0.35);
+        const grad = ctx.createRadialGradient(fx, fy, size * 0.15, fx, fy, size);
+        grad.addColorStop(0, `rgba(255, 236, 179, ${Math.min(0.95, alpha + 0.18)})`);
+        grad.addColorStop(0.35, `rgba(251, 146, 60, ${Math.min(0.85, alpha)})`);
+        grad.addColorStop(0.7, `rgba(249, 115, 22, ${Math.max(0, alpha - 0.12)})`);
         grad.addColorStop(1, "rgba(69, 26, 3, 0)");
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(fx, fy, size * 1.6, 0, Math.PI * 2);
+        ctx.arc(fx, fy, size, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -7549,8 +7555,13 @@ function trySelectPath(tower, path) {
     return false;
   }
   tower.upgradePath = path;
+  const targetRaw = Number(ui.upgradeTarget ? ui.upgradeTarget.value : 1);
   if ((tower.level || 1) < 5) {
-    upgradeTower(tower);
+    if (Number.isFinite(targetRaw) && targetRaw > 1) {
+      upgradeTowerByValue(tower, targetRaw);
+    } else {
+      upgradeTower(tower);
+    }
   } else {
     updateUpgradePanel();
   }
