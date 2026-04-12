@@ -61,14 +61,10 @@
                 <img src="https://wikimedia.org" alt="Google Logo">
                 <span>Sign in with Google</span>
               </button>
+              <button id="leaderboard-button" class="btn-small" type="button">Leaderboard</button>
               <div id="user-welcome" class="user-welcome hidden"></div>
               <button id="logout-button" class="btn-small hidden" type="button">Logout</button>
             </div>
-          </div>
-          <div class="leaderboard-card">
-            <div class="column-label">Leaderboard</div>
-            <div id="leaderboard-status" class="leaderboard-status">Waiting for Realtime updates.</div>
-            <ol id="leaderboard-list" class="leaderboard-list"></ol>
           </div>
         </div>
       </div>
@@ -443,6 +439,29 @@
           <button id="save-profile" type="button">Save Profile</button>
           <button id="profile-logout" class="btn-danger" type="button">Log Out</button>
           <button id="close-profile" class="btn-secondary" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+    <div id="leaderboard-modal" class="encyclopedia-modal hidden" role="dialog" aria-modal="true">
+      <div class="encyclopedia-card leaderboard-modal-card">
+        <div class="encyclopedia-header">
+          <span class="encyclopedia-icon">L</span>
+          <span class="encyclopedia-title">LEADERBOARD</span>
+        </div>
+        <div class="leaderboard-controls">
+          <label class="leaderboard-select">
+            <span>Type</span>
+            <select id="leaderboard-type">
+              <option value="kills">Most Killed</option>
+              <option value="towers">Most Towers Placed</option>
+              <option value="waves">Most Waves Accomplished</option>
+            </select>
+          </label>
+          <div id="leaderboard-status" class="leaderboard-status">Waiting for Realtime updates.</div>
+        </div>
+        <ol id="leaderboard-list" class="leaderboard-list"></ol>
+        <div class="encyclopedia-actions">
+          <button id="close-leaderboard" class="btn-secondary" type="button">Close</button>
         </div>
       </div>
     </div>

@@ -1,1 +1,1 @@
-window.TDMData.registerTower("freeze", { cost: 80, range: 120, rate: 1.3, damage: 0, color: "#7dd3fc", slow: 0.55, projectileType: "gas", gasSpeed: 60, gasDuration: 1.1, gasRadius: 12, gasMaxRadius: 70, gasGrowRate: 55, blocksPath: true });
+window.TDMData.registerTower("freeze", { cost: 70, range: 120, rate: 1.3, damage: 0, color: "#7dd3fc", slow: 0.55, projectileType: "gas", gasSpeed: 60, gasDuration: 1.1, gasRadius: 12, gasMaxRadius: 70, gasGrowRate: 55, blocksPath: true });

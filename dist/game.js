@@ -80,6 +80,7 @@ const loginState = {
 const profileState = {
   name: localStorage.getItem(PROFILE_NAME_KEY) || "",
   avatar: localStorage.getItem(PROFILE_AVATAR_KEY) || "",
+  defaultAvatar: "",
   maxWave: Number(localStorage.getItem(PROFILE_MAX_WAVE_KEY) || 0),
   maxDamage: Number(localStorage.getItem(PROFILE_MAX_DAMAGE_KEY) || 0),
   mostTowers: Number(localStorage.getItem(PROFILE_MOST_TOWERS_KEY) || 0),
@@ -88,6 +89,7 @@ const profileState = {
 const leaderboardState = {
   rows: [],
   subscription: null,
+  metric: localStorage.getItem("tdm_leaderboard_metric") || "kills",
 };
 
 const ui = {
@@ -124,8 +126,12 @@ const ui = {
   ],
   userWelcome: document.getElementById("user-welcome"),
   logoutButton: document.getElementById("logout-button"),
+  leaderboardButton: document.getElementById("leaderboard-button"),
   leaderboardStatus: document.getElementById("leaderboard-status"),
   leaderboardList: document.getElementById("leaderboard-list"),
+  leaderboardModal: document.getElementById("leaderboard-modal"),
+  leaderboardType: document.getElementById("leaderboard-type"),
+  closeLeaderboard: document.getElementById("close-leaderboard"),
   profileModal: document.getElementById("profile-modal"),
   profileAvatarPreview: document.getElementById("profile-avatar-preview"),
   profileEmail: document.getElementById("profile-email"),
@@ -595,6 +601,17 @@ function buildBlockedSet(extraCell) {
   return blocked;
 }
 
+function hasLiveEnemiesOnPath(paths = getActivePaths()) {
+  if (!paths || paths.length === 0) return false;
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    if (isPointNearAnyPath(paths, enemy.x, enemy.y, 22)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function findPath(fromCell, toCell, blocked) {
   const startKey = cellKey(fromCell.cx, fromCell.cy);
   const endKey = cellKey(toCell.cx, toCell.cy);
@@ -825,6 +842,22 @@ function getDefaultProfileName(account) {
   return words.length > 0 ? words.join(" ") : "Commander";
 }
 
+function getAccountAvatarUrl(account) {
+  const candidates = [
+    account?.avatar,
+    account?.avatarUrl,
+    account?.photoURL,
+    account?.photoUrl,
+    account?.prefs?.avatar,
+    account?.prefs?.avatarUrl,
+    account?.prefs?.photoURL,
+    account?.prefs?.photoUrl,
+    account?.prefs?.picture,
+    account?.prefs?.profilePicture,
+  ];
+  return candidates.find((value) => typeof value === "string" && value.trim()) || "";
+}
+
 function getProfileFallbackAvatar(name) {
   const initials = String(name || "C")
     .trim()
@@ -861,9 +894,20 @@ function getLeaderboardName(entry) {
   return String(entry?.name || entry?.playerName || entry?.username || entry?.email || "Unknown");
 }
 
-function getLeaderboardScore(entry) {
-  const value = Number(entry?.score ?? entry?.maxWave ?? entry?.wave ?? entry?.damage ?? 0);
-  return Number.isFinite(value) ? value : 0;
+function getLeaderboardMetricValue(entry, metric = leaderboardState.metric) {
+  if (metric === "towers") {
+    return Number(entry?.towersPlaced ?? entry?.towerCount ?? entry?.towers ?? entry?.score ?? 0);
+  }
+  if (metric === "waves") {
+    return Number(entry?.waves ?? entry?.maxWave ?? entry?.wave ?? entry?.score ?? 0);
+  }
+  return Number(entry?.kills ?? entry?.killed ?? entry?.enemiesKilled ?? entry?.score ?? 0);
+}
+
+function getLeaderboardLabel(metric = leaderboardState.metric) {
+  if (metric === "towers") return "Towers Placed";
+  if (metric === "waves") return "Waves Accomplished";
+  return "Enemies Killed";
 }
 
 function renderLeaderboard(rows = leaderboardState.rows) {
@@ -872,21 +916,27 @@ function renderLeaderboard(rows = leaderboardState.rows) {
       ? "Realtime connected."
       : "Waiting for Realtime updates.";
   }
+  if (ui.leaderboardType && ui.leaderboardType.value !== leaderboardState.metric) {
+    ui.leaderboardType.value = leaderboardState.metric;
+  }
   if (!ui.leaderboardList) return;
   ui.leaderboardList.innerHTML = "";
-  const sorted = [...rows].sort((a, b) => getLeaderboardScore(b) - getLeaderboardScore(a)).slice(0, 5);
+  const sorted = [...rows].sort((a, b) => getLeaderboardMetricValue(b) - getLeaderboardMetricValue(a)).slice(0, 100);
   if (sorted.length === 0) {
     const item = document.createElement("li");
     item.textContent = "No leaderboard entries yet.";
     ui.leaderboardList.appendChild(item);
     return;
   }
-  for (const entry of sorted) {
+  for (const [index, entry] of sorted.entries()) {
     const item = document.createElement("li");
     const name = getLeaderboardName(entry);
-    const score = getLeaderboardScore(entry);
-    const subLabel = entry?.wave !== undefined ? `Wave ${entry.wave}` : entry?.damage !== undefined ? `Damage ${Math.round(entry.damage || 0)}` : `Score ${score}`;
-    item.innerHTML = `<strong>${name}</strong><span>${subLabel}</span>`;
+    const value = Math.round(getLeaderboardMetricValue(entry));
+    const label = getLeaderboardLabel();
+    if (index === 0) item.classList.add("leaderboard-gold");
+    if (index === 1) item.classList.add("leaderboard-silver");
+    if (index === 2) item.classList.add("leaderboard-bronze");
+    item.innerHTML = `<strong>${index + 1}. ${name}</strong><span>${label}: ${value}</span>`;
     ui.leaderboardList.appendChild(item);
   }
 }
@@ -903,8 +953,8 @@ function updateLeaderboardUI(payload) {
   }
   leaderboardState.rows = leaderboardState.rows
     .filter(Boolean)
-    .sort((a, b) => getLeaderboardScore(b) - getLeaderboardScore(a))
-    .slice(0, 20);
+    .sort((a, b) => getLeaderboardMetricValue(b) - getLeaderboardMetricValue(a))
+    .slice(0, 200);
   renderLeaderboard();
 }
 
@@ -923,7 +973,7 @@ function subscribeLeaderboardRealtime() {
     return;
   }
   try {
-    appwriteRealtimeClient.setEndpoint(APPWRITE_REALTIME_ENDPOINT).setProject(APPWRITE_PROJECT_ID);
+    appwriteRealtimeClient.setEndpoint(APPWRITE_ENDPOINT).setProject(APPWRITE_PROJECT_ID);
     const channel = `databases.${APPWRITE_REALTIME_DATABASE_ID}.collections.${APPWRITE_REALTIME_COLLECTION_ID}.documents`;
     leaderboardState.subscription = appwriteRealtimeClient.subscribe(channel, (response) => {
       if (response?.payload) {
@@ -949,6 +999,16 @@ function initLeaderboardRealtime() {
   subscribeLeaderboardRealtime();
 }
 
+function openLeaderboardModal() {
+  if (!ui.leaderboardModal) return;
+  renderLeaderboard();
+  ui.leaderboardModal.classList.remove("hidden");
+}
+
+function closeLeaderboardModal() {
+  if (ui.leaderboardModal) ui.leaderboardModal.classList.add("hidden");
+}
+
 function syncProfileModal() {
   const displayName = profileState.name || loginState.email || "Commander";
   if (ui.profileEmail) {
@@ -958,7 +1018,7 @@ function syncProfileModal() {
     ui.profileNameInput.value = displayName;
   }
   if (ui.profileAvatarPreview) {
-    ui.profileAvatarPreview.src = profileState.avatar || getProfileFallbackAvatar(displayName);
+    ui.profileAvatarPreview.src = profileState.avatar || profileState.defaultAvatar || getProfileFallbackAvatar(displayName);
   }
   if (ui.profileMaxWave) ui.profileMaxWave.textContent = String(profileState.maxWave || 0);
   if (ui.profileMaxDamage) ui.profileMaxDamage.textContent = String(Math.round(profileState.maxDamage || 0));
@@ -1066,6 +1126,7 @@ async function refreshLoginState() {
   if (!appwriteAccount || !configureAppwriteClient()) {
     loginState.loggedIn = false;
     loginState.email = "";
+    profileState.defaultAvatar = "";
     syncProfileModal();
     syncLoginButtons();
     return;
@@ -1074,6 +1135,7 @@ async function refreshLoginState() {
     const account = await appwriteAccount.get();
     loginState.loggedIn = true;
     loginState.email = account?.email || account?.name || "Google user";
+    profileState.defaultAvatar = getAccountAvatarUrl(account);
     if (!profileState.name) {
       profileState.name = getDefaultProfileName(account);
     }
@@ -1083,6 +1145,7 @@ async function refreshLoginState() {
   } catch {
     loginState.loggedIn = false;
     loginState.email = "";
+    profileState.defaultAvatar = "";
     syncProfileModal();
   }
   syncLoginButtons();
@@ -1818,6 +1881,7 @@ function placeTower(type, x, y) {
   if (type === "drone" && isOnPath(x, y)) return false;
   if (data.blocksPath && isOnPath(x, y) && state.waveInProgress) return false;
   if (type === "wall" && isOnPath(x, y)) return false;
+  if (data.blocksPath && hasLiveEnemiesOnPath()) return false;
   for (const tower of state.towers) {
     const towerData = towerTypes[tower.type];
     if (towerData && towerData.noGridlock) continue;
@@ -1920,34 +1984,20 @@ function placeTower(type, x, y) {
 }
 
 function getUpgradeBaseCost(tower) {
-  const cost = (towerTypes[tower.type] && towerTypes[tower.type].cost) ? towerTypes[tower.type].cost : 50;
-  const scaled = Math.round(cost * 0.45);
-  return Math.min(140, Math.max(40, scaled));
+  return 40;
 }
 
 function getUpgradeCost(tower) {
   const baseCost = getUpgradeBaseCost(tower);
   const level = tower.level || 1;
-  let cost = Math.round(baseCost * Math.pow(1.8, Math.max(0, level - 1)));
-  if (level >= 4) {
-    cost = Math.round(cost * 50);
-  } else if (level >= 3) {
-    cost = Math.round(cost * 8);
-  }
-  return cost;
+  return Math.round(baseCost * Math.pow(2, Math.max(0, level - 1)));
 }
 
 function getUpgradeCostToLevel(currentLevel, targetLevel, tower) {
-  const baseCost = tower ? getUpgradeBaseCost(tower) : 50;
+  const baseCost = tower ? getUpgradeBaseCost(tower) : 40;
   let total = 0;
   for (let level = currentLevel; level < targetLevel; level += 1) {
-    let cost = Math.round(baseCost * Math.pow(1.8, Math.max(0, level - 1)));
-    if (level >= 4) {
-      cost = Math.round(cost * 50);
-    } else if (level >= 3) {
-      cost = Math.round(cost * 8);
-    }
-    total += cost;
+    total += Math.round(baseCost * Math.pow(2, Math.max(0, level - 1)));
   }
   return Math.round(total);
 }
@@ -5367,17 +5417,16 @@ function spawnBroodlets(origin, count) {
       stealth: false,
       pathGroup,
     });
-    const forward = 12 + Math.random() * 10;
-    const lateral = (Math.random() - 0.5) * 18;
-    const offset = {
-      x: tangent.x * forward + normal.x * lateral,
-      y: tangent.y * forward + normal.y * lateral,
-    };
-    brood.x = current.x + offset.x;
-    brood.y = current.y + offset.y;
+    const forward = 18 + Math.random() * 10 + i * 2;
+    const lateral = (Math.random() - 0.5) * 10;
+    brood.x = origin.x + tangent.x * forward + normal.x * lateral;
+    brood.y = origin.y + tangent.y * forward + normal.y * lateral;
     brood.path = pathPoints;
-    brood.pathIndex = originIndex;
-    brood.pathOffset = offset;
+    brood.pathIndex = Math.min(originIndex + 1, pathPoints.length - 2);
+    brood.pathOffset = {
+      x: normal.x * lateral,
+      y: normal.y * lateral,
+    };
     state.enemies.push(brood);
   }
 }
@@ -7362,21 +7411,21 @@ function drawProjectiles() {
       ctx.save();
       ctx.translate(proj.x, proj.y);
       ctx.rotate(angle + (proj.age || 0) * (proj.spinSpeed || 0));
-      if (grenadeImage.complete && grenadeImage.naturalWidth) {
-        const size = 22;
-        ctx.drawImage(grenadeImage, -size * 0.5, -size * 0.5, size, size);
-      } else {
-        ctx.fillStyle = "#fb7185";
-        ctx.beginPath();
-        ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#7f1d1d";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-2, -5);
-        ctx.lineTo(3, -7);
-        ctx.stroke();
-      }
+      ctx.fillStyle = "#1f2937";
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#94a3b8";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "#f97316";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(2, -6);
+      ctx.lineTo(7, -10);
+      ctx.stroke();
       ctx.restore();
       continue;
     }
@@ -7517,21 +7566,24 @@ function drawNukeLaunches() {
     const rotation = coalesce(launch.rotation, 0);
     const scale = coalesce(launch.scale, 1);
     ctx.save();
-    if (nukeImage.complete && nukeImage.naturalWidth) {
-      const base = 78;
-      ctx.translate(x, y);
-      ctx.rotate(rotation);
-      ctx.scale(scale, scale);
-      ctx.shadowColor = "rgba(248, 113, 113, 0.55)";
-      ctx.shadowBlur = 18;
-      ctx.drawImage(nukeImage, -base * 0.5, -base * 0.8, base, base * 1.6);
-    } else {
-      ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#64748b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -7);
+    ctx.lineTo(0, -14);
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -8406,6 +8458,10 @@ for (const button of ui.profileButtons || []) {
   }
 }
 
+if (ui.leaderboardButton) {
+  ui.leaderboardButton.addEventListener("click", openLeaderboardModal);
+}
+
 if (ui.logoutButton) {
   ui.logoutButton.addEventListener("click", logout);
 }
@@ -8448,6 +8504,26 @@ if (ui.profileModal) {
   ui.profileModal.addEventListener("click", (event) => {
     if (event.target === ui.profileModal) {
       closeProfileModal();
+    }
+  });
+}
+
+if (ui.leaderboardType) {
+  ui.leaderboardType.addEventListener("change", () => {
+    leaderboardState.metric = ui.leaderboardType.value || "kills";
+    localStorage.setItem("tdm_leaderboard_metric", leaderboardState.metric);
+    renderLeaderboard();
+  });
+}
+
+if (ui.closeLeaderboard) {
+  ui.closeLeaderboard.addEventListener("click", closeLeaderboardModal);
+}
+
+if (ui.leaderboardModal) {
+  ui.leaderboardModal.addEventListener("click", (event) => {
+    if (event.target === ui.leaderboardModal) {
+      closeLeaderboardModal();
     }
   });
 }

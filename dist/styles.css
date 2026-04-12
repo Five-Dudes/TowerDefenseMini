@@ -136,22 +136,47 @@ body {
 .game-actions .btn-nuke {
   all: unset;
   display: inline-block;
-  width: 72px;
-  height: 72px;
-  background: transparent url("assets/nuke-button-flat.png") center / contain no-repeat !important;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(226, 232, 240, 0.9) 0 10%, rgba(148, 163, 184, 0.25) 11% 20%, transparent 21%),
+    radial-gradient(circle at center, rgba(15, 23, 42, 0.96) 0 44%, rgba(52, 152, 219, 0.2) 45% 56%, rgba(2, 6, 23, 0.98) 57% 100%);
+  border: 1px solid rgba(52, 152, 219, 0.6);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.9), 0 0 18px rgba(52, 152, 219, 0.18);
   cursor: pointer;
+  position: relative;
 }
 
 .btn-nuke:hover {
-  filter: brightness(1.08) drop-shadow(0 0 12px rgba(248, 113, 113, 0.6)) drop-shadow(0 0 24px rgba(248, 113, 113, 0.35));
-  transform: scale(1.06);
+  transform: scale(1.03);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.9), 0 0 20px rgba(52, 152, 219, 0.28);
 }
 
 .btn-nuke:focus,
 .btn-nuke:focus-visible,
 .btn-nuke:active {
-  filter: brightness(1.08) drop-shadow(0 0 12px rgba(248, 113, 113, 0.65)) drop-shadow(0 0 26px rgba(248, 113, 113, 0.4));
-  transform: scale(1.06);
+  transform: scale(1.03);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.9), 0 0 22px rgba(52, 152, 219, 0.32);
+}
+
+.btn-nuke::before {
+  content: "";
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(226, 232, 240, 0.85);
+}
+
+.btn-nuke::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: 2px;
+  height: 18px;
+  transform: translateX(-50%);
+  background: rgba(226, 232, 240, 0.8);
 }
 
 .nuke-cost {
@@ -358,6 +383,10 @@ button:focus-visible {
   z-index: 1025;
 }
 
+#leaderboard-modal {
+  z-index: 1026;
+}
+
 .leaderboard-card {
   margin-top: 18px;
   padding: 14px 16px;
@@ -365,6 +394,28 @@ button:focus-visible {
   border-radius: 14px;
   background: rgba(0, 20, 40, 0.55);
   text-align: left;
+}
+
+.leaderboard-modal-card {
+  width: min(680px, 92vw);
+}
+
+.leaderboard-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.leaderboard-select {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.leaderboard-select select {
+  width: 100%;
 }
 
 .leaderboard-status {
@@ -386,10 +437,27 @@ button:focus-visible {
 .leaderboard-list li {
   display: grid;
   gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 20, 40, 0.35);
+  border: 1px solid rgba(52, 152, 219, 0.2);
 }
 
 .leaderboard-list strong {
   color: #dff2ff;
+}
+
+.leaderboard-list li.leaderboard-gold {
+  border-color: rgba(250, 204, 21, 0.7);
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.2);
+}
+
+.leaderboard-list li.leaderboard-silver {
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
+.leaderboard-list li.leaderboard-bronze {
+  border-color: rgba(180, 83, 9, 0.7);
 }
 
 .profile-layout {
@@ -768,7 +836,7 @@ kbd {
 
 .title-columns {
   display: grid;
-  grid-template-columns: minmax(340px, 1.45fr) minmax(180px, 0.7fr) minmax(280px, 1.05fr);
+  grid-template-columns: minmax(420px, 1.75fr) minmax(140px, 0.55fr) minmax(300px, 1fr);
   gap: 16px;
   align-items: start;
   margin-top: 8px;
