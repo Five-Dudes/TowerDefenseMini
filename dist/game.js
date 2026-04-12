@@ -52,6 +52,18 @@ const grenadeImage = new Image();
 grenadeImage.src = "./assets/grenade.png";
 const sixSevenImage = new Image();
 sixSevenImage.src = "./assets/sixseven-six.gif";
+const appwriteApi = window.Appwrite || {};
+const appwriteClient = appwriteApi.Client ? new appwriteApi.Client() : null;
+const appwriteAccount = appwriteClient && appwriteApi.Account ? new appwriteApi.Account(appwriteClient) : null;
+const APPWRITE_ENDPOINT_KEY = "tdm_appwrite_endpoint";
+const APPWRITE_PROJECT_KEY = "tdm_appwrite_project";
+const loginState = {
+  email: "",
+  loggedIn: false,
+  loading: false,
+  endpoint: localStorage.getItem(APPWRITE_ENDPOINT_KEY) || "https://cloud.appwrite.io/v1",
+  project: localStorage.getItem(APPWRITE_PROJECT_KEY) || "",
+};
 
 const ui = {
   lives: document.getElementById("lives"),
@@ -71,6 +83,16 @@ const ui = {
   alertTitle: document.getElementById("alert-title"),
   alertContent: document.getElementById("alert-content"),
   closeAlert: document.getElementById("close-alert"),
+  loginModal: document.getElementById("login-modal"),
+  loginStatus: document.getElementById("login-status"),
+  loginEndpoint: document.getElementById("login-endpoint"),
+  loginProject: document.getElementById("login-project"),
+  loginEmail: document.getElementById("login-email"),
+  loginPassword: document.getElementById("login-password"),
+  submitLogin: document.getElementById("submit-login"),
+  closeLogin: document.getElementById("close-login"),
+  loginBtn: document.getElementById("login-btn"),
+  gameLoginBtn: document.getElementById("game-login-btn"),
   tutorialModal: document.getElementById("tutorial-modal"),
   openTutorial: document.getElementById("tutorial-btn"),
   closeTutorial: document.getElementById("close-tutorial"),
@@ -181,6 +203,7 @@ for (const requiredId of ["easy-btn", "medium-btn", "hard-btn", "tutorial-btn"])
     console.error(`${requiredId} missing`);
   }
 }
+syncLoginButtons();
 
 const buildButtons = {
   watch: ui.buildWatch,
@@ -733,6 +756,77 @@ function flashButton(element) {
   window.setTimeout(() => {
     element.classList.remove("alert");
   }, 500);
+}
+
+function setLoginStatus(message) {
+  if (ui.loginStatus) {
+    ui.loginStatus.textContent = message;
+  }
+}
+
+function syncLoginButtons() {
+  const label = loginState.loggedIn ? "Logged In" : "Login";
+  if (ui.loginBtn) ui.loginBtn.textContent = label;
+  if (ui.gameLoginBtn) ui.gameLoginBtn.textContent = label;
+  if (ui.submitLogin) ui.submitLogin.disabled = loginState.loading;
+  if (ui.loginBtn) ui.loginBtn.disabled = loginState.loading;
+  if (ui.gameLoginBtn) ui.gameLoginBtn.disabled = loginState.loading;
+}
+
+function openLoginModal() {
+  if (!ui.loginModal) return;
+  if (ui.loginEndpoint) ui.loginEndpoint.value = loginState.endpoint || "";
+  if (ui.loginProject) ui.loginProject.value = loginState.project || "";
+  if (ui.loginEmail) ui.loginEmail.value = loginState.email || "";
+  if (ui.loginPassword) ui.loginPassword.value = "";
+  setLoginStatus(loginState.loggedIn
+    ? `Logged in as ${loginState.email || "Appwrite user"}.`
+    : "Enter your Appwrite endpoint, project ID, email, and password.");
+  ui.loginModal.classList.remove("hidden");
+}
+
+function closeLoginModal() {
+  if (ui.loginModal) ui.loginModal.classList.add("hidden");
+}
+
+async function submitLogin() {
+  if (!appwriteClient || !appwriteAccount) {
+    setLoginStatus("Appwrite SDK is not available.");
+    return;
+  }
+  const endpoint = (ui.loginEndpoint ? ui.loginEndpoint.value.trim() : "") || loginState.endpoint;
+  const project = (ui.loginProject ? ui.loginProject.value.trim() : "") || loginState.project;
+  const email = ui.loginEmail ? ui.loginEmail.value.trim() : "";
+  const password = ui.loginPassword ? ui.loginPassword.value : "";
+  if (!endpoint || !project || !email || !password) {
+    setLoginStatus("Endpoint, project ID, email, and password are required.");
+    return;
+  }
+  loginState.loading = true;
+  syncLoginButtons();
+  setLoginStatus("Logging in...");
+  try {
+    appwriteClient.setEndpoint(endpoint).setProject(project);
+    await appwriteAccount.createEmailPasswordSession({
+      email,
+      password,
+    });
+    loginState.loggedIn = true;
+    loginState.email = email;
+    loginState.endpoint = endpoint;
+    loginState.project = project;
+    localStorage.setItem(APPWRITE_ENDPOINT_KEY, endpoint);
+    localStorage.setItem(APPWRITE_PROJECT_KEY, project);
+    setLoginStatus(`Logged in as ${loginState.email}.`);
+    syncLoginButtons();
+    closeLoginModal();
+  } catch (error) {
+    loginState.loggedIn = false;
+    setLoginStatus(`Login failed: ${error?.message || error}`);
+  } finally {
+    loginState.loading = false;
+    syncLoginButtons();
+  }
 }
 
 function notificationsSuppressed() {
@@ -7976,6 +8070,32 @@ if (ui.tutorialModal) {
   });
 }
 
+if (ui.loginBtn) {
+  ui.loginBtn.addEventListener("click", openLoginModal);
+  ui.loginBtn.addEventListener("pointerdown", openLoginModal);
+}
+
+if (ui.gameLoginBtn) {
+  ui.gameLoginBtn.addEventListener("click", openLoginModal);
+  ui.gameLoginBtn.addEventListener("pointerdown", openLoginModal);
+}
+
+if (ui.submitLogin) {
+  ui.submitLogin.addEventListener("click", submitLogin);
+}
+
+if (ui.closeLogin) {
+  ui.closeLogin.addEventListener("click", closeLoginModal);
+}
+
+if (ui.loginModal) {
+  ui.loginModal.addEventListener("click", (event) => {
+    if (event.target === ui.loginModal) {
+      closeLoginModal();
+    }
+  });
+}
+
 if (ui.openJasper) {
   ui.openJasper.addEventListener("click", () => {
     if (!state.easterUnlocked) return;
@@ -8285,6 +8405,7 @@ function resetGame() {
   if (ui.tipsModal) ui.tipsModal.classList.add("hidden");
   if (ui.tutorialModal) ui.tutorialModal.classList.add("hidden");
   if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
+  if (ui.loginModal) ui.loginModal.classList.add("hidden");
   if (ui.alertModal) ui.alertModal.classList.add("hidden");
   setActiveMap(state.mapId);
   recomputeGlobalPath();
@@ -8431,6 +8552,7 @@ window.addEventListener("keydown", (event) => {
     if (ui.tipsModal) ui.tipsModal.classList.add("hidden");
     if (ui.tutorialModal) ui.tutorialModal.classList.add("hidden");
     if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
+    if (ui.loginModal) ui.loginModal.classList.add("hidden");
   }
   if (event.key.toLowerCase() === "d") {
     let closest = null;

@@ -46,6 +46,9 @@
             <button id="hard-btn" type="button" data-difficulty="hard">Hard</button>
           </div>
           <div class="difficulty-buttons">
+            <button id="login-btn" type="button" class="btn-login-big">Login</button>
+          </div>
+          <div class="difficulty-buttons">
             <button id="tutorial-btn" type="button">Tutorial</button>
           </div>
         </div>
@@ -85,6 +88,7 @@
           </div>
         </div>
         <div class="topbar-secondary">
+          <button id="game-login-btn" class="btn-small btn-login-small">Login</button>
           <button id="open-jasper" class="btn-small btn-jasper hidden">Jasper Menu</button>
           <button id="half-cash" class="btn-small">Half Cash: Off</button>
         </div>
@@ -357,6 +361,39 @@
         </div>
         <div class="encyclopedia-actions">
           <button id="close-jasper" class="btn-secondary" type="button" data-close="jasper">Close</button>
+        </div>
+      </div>
+    </div>
+    <div id="login-modal" class="encyclopedia-modal hidden" role="dialog" aria-modal="true">
+      <div class="encyclopedia-card login-card">
+        <div class="encyclopedia-header">
+          <span class="encyclopedia-icon">@</span>
+          <span class="encyclopedia-title">APPWRITE LOGIN</span>
+        </div>
+        <div id="login-status" class="encyclopedia-content login-status">
+          Enter your Appwrite endpoint, project ID, email, and password.
+        </div>
+        <div class="login-form">
+          <label>
+            <span>Endpoint</span>
+            <input id="login-endpoint" type="url" placeholder="https://cloud.appwrite.io/v1" />
+          </label>
+          <label>
+            <span>Project ID</span>
+            <input id="login-project" type="text" placeholder="Project ID" />
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="login-email" type="email" placeholder="email@example.com" />
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="login-password" type="password" placeholder="Password" />
+          </label>
+        </div>
+        <div class="encyclopedia-actions login-actions">
+          <button id="submit-login" type="button">Login</button>
+          <button id="close-login" class="btn-secondary" type="button">Close</button>
         </div>
       </div>
     </div>
