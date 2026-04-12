@@ -258,12 +258,14 @@ const state = {
   autoWave: false,
   auraSnapshot: null,
   waveSpeed: 1,
+  waveHasSpawnedNonSpeedy: false,
   towerLevelCap: 5,
   mapId: "rift",
   mapPaths: [],
   mapStartCells: [],
   mapEndCell: null,
   mapEndPoint: null,
+  mapBurnDamageMult: 1,
   mapPalette: {
     top: "#200b3b",
     mid: "#130820",
@@ -464,6 +466,7 @@ function setActiveMap(mapId) {
   const endPoint = map.paths[0][map.paths[0].length - 1];
   state.mapEndPoint = snapToGrid(endPoint.x, endPoint.y);
   state.mapEndCell = worldToCell(state.mapEndPoint.x, state.mapEndPoint.y);
+  state.mapBurnDamageMult = map.burnDamageMult || 1;
   state.mapPalette = map.palette || state.mapPalette;
   state.pathPoints = [];
   state.preferredPathCells = buildPreferredPathCells(state.mapPaths);
@@ -1191,6 +1194,7 @@ function startWave() {
   if (!state.gameStarted) return;
   state.wave += 1;
   state.waveInProgress = true;
+  state.waveHasSpawnedNonSpeedy = false;
   if (state.wave % 10 === 0) {
     state.enemiesToSpawn = 1;
   } else {
@@ -1284,7 +1288,7 @@ function spawnEnemy() {
     const bossIndex = Math.max(0, Math.floor(state.wave / 10) - 1);
     const bossTypes = ["boss_fast", "boss_pentagon", "boss_hexagon", "boss_diamond"];
     type = bossTypes[bossIndex % bossTypes.length];
-  } else if (roll < 0.1 && state.wave >= 2) {
+  } else if (roll < 0.1 && state.wave >= 2 && !state.waveHasSpawnedNonSpeedy) {
     type = "speedy";
   } else if (roll < 0.2 && state.wave >= 3) {
     type = "heavy";
@@ -1327,6 +1331,7 @@ function spawnEnemy() {
     darkMatter = false;
   }
   if (type === "swarm") {
+    state.waveHasSpawnedNonSpeedy = true;
     registerEnemyInEncyclopedia(type, armored, darkMatter);
     const paths = getActivePaths();
     const pathPoints = paths[pathGroup] || paths[0];
@@ -1355,6 +1360,9 @@ function spawnEnemy() {
       }));
     }
     return true;
+  }
+  if (type !== "speedy") {
+    state.waveHasSpawnedNonSpeedy = true;
   }
   registerEnemyInEncyclopedia(type, armored, darkMatter, stealth);
   state.enemies.push(createEnemy(type, { armored, darkMatter, stealth, pathGroup }));
@@ -3060,6 +3068,21 @@ function fireProjectile(tower, enemy, stats) {
     const bulletSpeed = stats.projectileSpeed || data.projectileSpeed || 340;
     const guns = Math.max(1, stats.droneGuns || 1);
     const miniCount = stats.droneMiniCount || 0;
+    const meleeRange = stats.droneMeleeRange || data.droneMeleeRange || 18;
+    const targetPos = getEnemyPosition(enemy);
+    if (guns === 1 && miniCount === 0 && Math.hypot(targetPos.x - muzzle.x, targetPos.y - muzzle.y) <= meleeRange) {
+      applyDamage(enemy, damage);
+      applySupportEffectsToEnemy(enemy, tower, { sourceType });
+      playAttackImpactSound();
+      if (stats.fireDps > 0 && stats.fireDuration > 0 && !enemy.darkMatter && !enemy.immuneHeat) {
+        enemy.burnTimer = Math.max(enemy.burnTimer || 0, stats.fireDuration);
+        enemy.burnDps = Math.max(enemy.burnDps || 0, stats.fireDps);
+      }
+      if (enemy.hp <= 0) {
+        handleEnemyDeath(enemy);
+      }
+      return;
+    }
     const fireHoming = (x, y, dmg, speed) => {
       state.projectiles.push({
         kind: "homing",
@@ -5084,15 +5107,15 @@ function updateEnemies(dt) {
         enemy.burnTimer = 0;
         enemy.burnDps = 0;
       } else {
-      const tick = Math.min(enemy.burnTimer, dt);
-      enemy.burnTimer -= dt;
-      if (!state.nukeSmoke) {
-        applyDamage(enemy, enemy.burnDps * tick);
-        if (enemy.hp <= 0) {
-          handleEnemyDeath(enemy);
-          continue;
+        const tick = Math.min(enemy.burnTimer, dt);
+        enemy.burnTimer -= dt;
+        if (!state.nukeSmoke) {
+          applyDamage(enemy, enemy.burnDps * tick * (state.mapBurnDamageMult || 1));
+          if (enemy.hp <= 0) {
+            handleEnemyDeath(enemy);
+            continue;
+          }
         }
-      }
       }
     }
     if (enemy.stunTimer > 0) {
@@ -8540,6 +8563,7 @@ canvas.addEventListener("contextmenu", (event) => {
 
 canvas.addEventListener("auxclick", (event) => {
   if (event.button !== 1) return;
+  if (!state.jasperEnabled) return;
   event.preventDefault();
   const rect = canvas.getBoundingClientRect();
   const x = ((event.clientX - rect.left) / rect.width) * canvas.width;

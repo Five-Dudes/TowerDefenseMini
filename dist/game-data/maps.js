@@ -85,6 +85,7 @@
       id: "cinder",
       name: "Cinder Steps",
       desc: "A long ember climb with a final drop.",
+      burnDamageMult: 1.5,
       palette: {
         top: "#3b1208",
         mid: "#20100d",
