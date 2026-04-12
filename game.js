@@ -766,9 +766,8 @@ function setLoginStatus(message) {
 }
 
 function syncLoginButtons() {
-  const label = loginState.loggedIn ? "Logged In" : "Login";
-  if (ui.loginBtn) ui.loginBtn.textContent = label;
-  if (ui.gameLoginBtn) ui.gameLoginBtn.textContent = label;
+  if (ui.loginBtn) ui.loginBtn.textContent = loginState.loggedIn ? "Logged In" : "Continue with Google";
+  if (ui.gameLoginBtn) ui.gameLoginBtn.textContent = loginState.loggedIn ? "Logged In" : "Google";
   if (ui.submitLogin) ui.submitLogin.disabled = loginState.loading;
   if (ui.loginBtn) ui.loginBtn.disabled = loginState.loading;
   if (ui.gameLoginBtn) ui.gameLoginBtn.disabled = loginState.loading;
