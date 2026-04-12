@@ -771,9 +771,10 @@ function setLoginStatus(message) {
 function syncLoginButtons() {
   if (ui.loginButton) ui.loginButton.textContent = loginState.loggedIn ? "Logged In" : "Sign in with Google";
   if (ui.gameLoginButton) ui.gameLoginButton.textContent = loginState.loggedIn ? "Logged In" : "Sign in with Google";
-  if (ui.submitLogin) ui.submitLogin.disabled = loginState.loading;
-  if (ui.loginButton) ui.loginButton.disabled = loginState.loading;
-  if (ui.gameLoginButton) ui.gameLoginButton.disabled = loginState.loading;
+  const locked = loginState.loading || loginState.loggedIn;
+  if (ui.submitLogin) ui.submitLogin.disabled = locked;
+  if (ui.loginButton) ui.loginButton.disabled = locked;
+  if (ui.gameLoginButton) ui.gameLoginButton.disabled = locked;
 }
 
 function configureAppwriteClient() {
@@ -800,6 +801,7 @@ async function refreshLoginState() {
 }
 
 function openLoginModal() {
+  if (loginState.loggedIn || loginState.loading) return;
   void submitLogin();
 }
 
@@ -810,6 +812,9 @@ function closeLoginModal() {
 async function submitLogin() {
   if (!appwriteClient || !appwriteAccount) {
     setLoginStatus("Appwrite SDK is not available.");
+    return;
+  }
+  if (loginState.loggedIn || loginState.loading) {
     return;
   }
   const endpoint = APPWRITE_ENDPOINT;
