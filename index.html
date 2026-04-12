@@ -15,46 +15,54 @@
         <div class="title-card">
           <h1>Tower Defense Mini V2.14</h1>
           <p>Choose your map and difficulty to begin.</p>
-          <div class="map-picker">
-            <div class="map-label">Map Select</div>
-            <div class="map-grid">
-              <button class="map-card active" data-map="rift">
-                <span class="map-name">Void Rift</span>
-                <span class="map-desc">Classic bend.</span>
-              </button>
-              <button class="map-card" data-map="twin">
-                <span class="map-name">Twin Marsh</span>
-                <span class="map-desc">Two portals converge.</span>
-              </button>
-              <button class="map-card" data-map="crystal">
-                <span class="map-name">Crystal Basin</span>
-                <span class="map-desc">Zig-zag corridors.</span>
-              </button>
-              <button class="map-card" data-map="cinder">
-                <span class="map-name">Cinder Steps</span>
-                <span class="map-desc">Long ember climb.</span>
-              </button>
-              <button class="map-card" data-map="bastion">
-                <span class="map-name">Split Bastion</span>
-                <span class="map-desc">Twin lanes spiral.</span>
-              </button>
+          <div class="title-columns">
+            <div class="title-column">
+              <div class="column-label">Difficulty</div>
+              <div class="difficulty-buttons">
+                <button id="easy-btn" type="button" data-difficulty="easy">Easy</button>
+                <button id="medium-btn" type="button" data-difficulty="medium">Medium</button>
+                <button id="hard-btn" type="button" data-difficulty="hard">Hard</button>
+              </div>
+              <div class="difficulty-buttons">
+                <button id="tutorial-btn" type="button">Tutorial</button>
+              </div>
             </div>
-          </div>
-          <div class="difficulty-buttons">
-            <button id="easy-btn" type="button" data-difficulty="easy">Easy</button>
-            <button id="medium-btn" type="button" data-difficulty="medium">Medium</button>
-            <button id="hard-btn" type="button" data-difficulty="hard">Hard</button>
-          </div>
-          <div class="difficulty-buttons">
-            <button id="tutorial-btn" type="button">Tutorial</button>
-          </div>
-          <div class="difficulty-buttons">
-            <button id="login-button" class="game-menu-btn google-btn" type="button">
-              <img src="https://wikimedia.org" alt="Google Logo">
-              <span>Sign in with Google</span>
-            </button>
-            <div id="user-welcome" class="user-welcome hidden"></div>
-            <button id="logout-button" class="btn-small hidden" type="button">Logout</button>
+            <div class="title-column">
+              <div class="column-label">Map</div>
+              <div class="map-picker">
+                <div class="map-grid">
+                  <button class="map-card active" data-map="rift">
+                    <span class="map-name">Void Rift</span>
+                    <span class="map-desc">Classic bend.</span>
+                  </button>
+                  <button class="map-card" data-map="twin">
+                    <span class="map-name">Twin Marsh</span>
+                    <span class="map-desc">Two portals converge.</span>
+                  </button>
+                  <button class="map-card" data-map="crystal">
+                    <span class="map-name">Crystal Basin</span>
+                    <span class="map-desc">Zig-zag corridors.</span>
+                  </button>
+                  <button class="map-card" data-map="cinder">
+                    <span class="map-name">Cinder Steps</span>
+                    <span class="map-desc">Long ember climb.</span>
+                  </button>
+                  <button class="map-card" data-map="bastion">
+                    <span class="map-name">Split Bastion</span>
+                    <span class="map-desc">Twin lanes spiral.</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="title-column">
+              <div class="column-label">Login</div>
+              <button id="login-button" class="game-menu-btn google-btn" type="button">
+                <img src="https://wikimedia.org" alt="Google Logo">
+                <span>Sign in with Google</span>
+              </button>
+              <div id="user-welcome" class="user-welcome hidden"></div>
+              <button id="logout-button" class="btn-small hidden" type="button">Logout</button>
+            </div>
           </div>
         </div>
       </div>
@@ -93,7 +101,6 @@
           </div>
         </div>
         <div class="topbar-secondary">
-          <button id="profile-button" class="btn-small hidden" type="button">Profile</button>
           <button id="game-login-button" class="google-btn google-btn-small" type="button">
             <img src="https://wikimedia.org" alt="Google Logo">
             <span>Sign in with Google</span>
