@@ -744,6 +744,33 @@ function getSourceAnchor(source) {
   };
 }
 
+function getTowerMuzzlePoint(tower, stats = {}) {
+  const angle = coalesce(tower.aimAngle, tower.facing, 0);
+  const base = getSourceAnchor(tower);
+  let muzzleLength = 14;
+  if (tower.type === "watch" || tower.type === "dart") {
+    muzzleLength = 18;
+  } else if (tower.type === "bomb") {
+    muzzleLength = 16;
+  } else if (tower.type === "laser") {
+    muzzleLength = 17;
+  } else if (tower.type === "flame") {
+    muzzleLength = 14;
+  } else if (tower.type === "drone") {
+    muzzleLength = 15;
+  } else if (tower.type === "secret") {
+    muzzleLength = 16;
+  } else if (tower.type === "op") {
+    muzzleLength = 20;
+  }
+  const barrel = Math.max(muzzleLength, (stats.barrelLength || 0));
+  return {
+    x: base.x + Math.cos(angle) * barrel,
+    y: base.y + Math.sin(angle) * barrel,
+    angle,
+  };
+}
+
 function getEnemySeparationRadius(enemy) {
   return Math.max(8, getEnemyRadius(enemy) * 0.9);
 }
@@ -2946,7 +2973,7 @@ function handleClick(event) {
 
 function emitFreezeGas(tower, enemy, stats) {
   const { data } = stats;
-  const origin = { x: tower.x, y: tower.y };
+  const origin = getTowerMuzzlePoint(tower, stats);
   const targetPos = getEnemyPosition(enemy);
   const angle = Math.atan2(targetPos.y - origin.y, targetPos.x - origin.x);
   const speed = data.gasSpeed || 60;
@@ -3007,6 +3034,7 @@ function fireProjectile(tower, enemy, stats) {
   const damage = stats.damage;
   const sourceType = tower.type;
   const supportEffects = getSupportEffectsForSource(tower, { sourceType });
+  const muzzle = getTowerMuzzlePoint(tower, stats);
   let poisonDps = (data.poisonDps || 0) + (tower.level - 1) * 1.5;
   let poisonDuration = data.poisonDuration ? data.poisonDuration + (tower.level - 1) * 0.2 : 0;
   let embrittlementPercent = sourceType === "dart"
@@ -3048,13 +3076,13 @@ function fireProjectile(tower, enemy, stats) {
         embrittlementPercent: 0,
       });
     };
-    const toTarget = Math.atan2(enemy.y - tower.y, enemy.x - tower.x);
+    const toTarget = Math.atan2(enemy.y - muzzle.y, enemy.x - muzzle.x);
     const offsetAngle = toTarget + Math.PI / 2;
     const baseOffset = guns > 1 ? 6 : 0;
     for (let i = 0; i < guns; i += 1) {
       const offset = (i - (guns - 1) / 2) * baseOffset;
-      const ox = tower.x + Math.cos(offsetAngle) * offset;
-      const oy = tower.y + Math.sin(offsetAngle) * offset;
+      const ox = muzzle.x + Math.cos(offsetAngle) * offset;
+      const oy = muzzle.y + Math.sin(offsetAngle) * offset;
       fireHoming(ox, oy, damage, bulletSpeed);
     }
     if (stats.droneMissiles > 0) {
@@ -3064,8 +3092,8 @@ function fireProjectile(tower, enemy, stats) {
       for (let i = 0; i < stats.droneMissiles; i += 1) {
         state.projectiles.push({
           kind: "rocket",
-          x: tower.x,
-          y: tower.y,
+          x: muzzle.x,
+          y: muzzle.y,
           target: enemy,
           targetPos: getEnemyPosition(enemy),
           speed: Math.min(140, missileSpeed),
@@ -3088,8 +3116,8 @@ function fireProjectile(tower, enemy, stats) {
     for (let i = 0; i < burst; i += 1) {
       state.projectiles.push({
         kind: stats.bombProjectileKind || "bomb",
-        x: tower.x,
-        y: tower.y,
+        x: muzzle.x,
+        y: muzzle.y,
         target: enemy,
         targetPos: getEnemyPosition(enemy),
         speed: stats.bombProjectileKind === "rocket" ? 140 : (stats.projectileSpeed || data.projectileSpeed || 260),
@@ -3122,13 +3150,13 @@ function fireProjectile(tower, enemy, stats) {
         playAttackImpactSound();
         enemy.revealed = true;
       }
-      const dx = enemy.x - tower.x;
-      const dy = enemy.y - tower.y;
+      const dx = enemy.x - muzzle.x;
+      const dy = enemy.y - muzzle.y;
       const dist = Math.hypot(dx, dy) || 1;
       state.projectiles.push({
         kind: "line",
-        x: tower.x,
-        y: tower.y,
+        x: muzzle.x,
+        y: muzzle.y,
         vx: (dx / dist) * 120,
         vy: (dy / dist) * 120,
         ttl: 0.08,
@@ -3137,8 +3165,8 @@ function fireProjectile(tower, enemy, stats) {
     }
     state.projectiles.push({
       kind: sourceType === "watch" ? "line" : "homing",
-      x: tower.x,
-      y: tower.y,
+      x: muzzle.x,
+      y: muzzle.y,
       target: enemy,
       speed: stats.projectileSpeed || data.projectileSpeed || 320,
       damage,
@@ -3162,8 +3190,9 @@ function fireProjectile(tower, enemy, stats) {
 
 function fireLaser(tower, enemy, stats, range) {
   const { data } = stats;
-  const originX = tower.x;
-  const originY = tower.y;
+  const muzzle = getTowerMuzzlePoint(tower, stats);
+  const originX = muzzle.x;
+  const originY = muzzle.y;
   const targetPos = getEnemyPosition(enemy);
   const dx = targetPos.x - originX;
   const dy = targetPos.y - originY;
@@ -3267,8 +3296,9 @@ function fireLaser(tower, enemy, stats, range) {
 
 function fireFlameCone(tower, enemy, stats) {
   const { data } = stats;
-  const originX = tower.x;
-  const originY = tower.y;
+  const muzzle = getTowerMuzzlePoint(tower, stats);
+  const originX = muzzle.x;
+  const originY = muzzle.y;
   const targetPos = getEnemyPosition(enemy);
   const angle = Math.atan2(targetPos.y - originY, targetPos.x - originX);
   const coneAngle = stats.coneAngle || data.coneAngle || 0.7;
