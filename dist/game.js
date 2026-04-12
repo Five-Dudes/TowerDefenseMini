@@ -1286,7 +1286,7 @@ function chooseOpenSpawnPathGroup() {
 
 function spawnEnemy() {
   const pathGroup = chooseOpenSpawnPathGroup();
-  const spawnGroup = Number.isFinite(pathGroup) ? pathGroup : 0;
+  if (pathGroup === null) return false;
   const isBossWave = state.wave % 10 === 0;
   const roll = Math.random();
   let type = "grunt";
@@ -1372,7 +1372,7 @@ function spawnEnemy() {
     state.waveHasSpawnedNonSpeedy = true;
   }
   registerEnemyInEncyclopedia(type, armored, darkMatter, stealth);
-  state.enemies.push(createEnemy(type, { armored, darkMatter, stealth, pathGroup: spawnGroup }));
+  state.enemies.push(createEnemy(type, { armored, darkMatter, stealth, pathGroup }));
   return true;
 }
 
@@ -5002,25 +5002,6 @@ function updateEnemies(dt) {
           }
           break;
         }
-      }
-    }
-    if (tower.type === "factory") {
-      const path = tower.upgradePath || 1;
-      const tier = Math.min(level, 5);
-      factoryGold = 1;
-      factoryLife = 0;
-      if (path === 1) {
-        if (tier >= 1) factoryGold = 2;
-        if (tier >= 2) factoryGold = 4;
-        if (tier >= 3) factoryKillGoldBonus = 2;
-        if (tier >= 4) factoryLifeDrop = 1;
-        if (tier >= 5) factoryLifeDrop = 5;
-      } else {
-        if (tier >= 1) factoryLife = 1;
-        if (tier >= 2) factoryLife = 2;
-        if (tier >= 3) factoryKillLifeBonus = 1;
-        if (tier >= 4) factoryGoldDropMult = 2;
-        if (tier >= 5) factoryGoldDropMult = 4;
       }
     }
   }
