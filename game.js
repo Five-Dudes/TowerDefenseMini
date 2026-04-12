@@ -69,6 +69,8 @@ const PROFILE_AVATAR_KEY = "tdm_profile_avatar";
 const PROFILE_MAX_WAVE_KEY = "tdm_profile_max_wave";
 const PROFILE_MAX_DAMAGE_KEY = "tdm_profile_max_damage";
 const PROFILE_MOST_TOWERS_KEY = "tdm_profile_most_towers";
+const PROFILE_FAVORITE_TOWER_KEY = "tdm_profile_favorite_tower";
+const PROFILE_LEAST_FAVORITE_ENEMY_KEY = "tdm_profile_least_favorite_enemy";
 const loginState = {
   email: "",
   loggedIn: false,
@@ -84,6 +86,8 @@ const profileState = {
   maxWave: Number(localStorage.getItem(PROFILE_MAX_WAVE_KEY) || 0),
   maxDamage: Number(localStorage.getItem(PROFILE_MAX_DAMAGE_KEY) || 0),
   mostTowers: Number(localStorage.getItem(PROFILE_MOST_TOWERS_KEY) || 0),
+  favoriteTower: localStorage.getItem(PROFILE_FAVORITE_TOWER_KEY) || "",
+  leastFavoriteEnemy: localStorage.getItem(PROFILE_LEAST_FAVORITE_ENEMY_KEY) || "",
 };
 
 const leaderboardState = {
@@ -140,6 +144,8 @@ const ui = {
   profileMaxWave: document.getElementById("profile-max-wave"),
   profileMaxDamage: document.getElementById("profile-max-damage"),
   profileMostTowers: document.getElementById("profile-most-towers"),
+  profileFavoriteTower: document.getElementById("profile-favorite-tower"),
+  profileLeastFavoriteEnemy: document.getElementById("profile-least-favorite-enemy"),
   saveProfile: document.getElementById("save-profile"),
   profileLogout: document.getElementById("profile-logout"),
   closeProfile: document.getElementById("close-profile"),
@@ -295,6 +301,8 @@ const state = {
   suppressClick: false,
   towers: [],
   enemies: [],
+  enemyDamageByType: {},
+  nextEnemyPackId: 1,
   projectiles: [],
   beams: [],
   explosions: [],
@@ -612,6 +620,19 @@ function hasLiveEnemiesOnPath(paths = getActivePaths()) {
   return false;
 }
 
+function hasLiveEnemiesNearPoint(x, y, radius = 28) {
+  const radiusSq = radius * radius;
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    const dx = enemy.x - x;
+    const dy = enemy.y - y;
+    if (dx * dx + dy * dy <= radiusSq) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function findPath(fromCell, toCell, blocked) {
   const startKey = cellKey(fromCell.cx, fromCell.cy);
   const endKey = cellKey(toCell.cx, toCell.cy);
@@ -888,6 +909,54 @@ function persistProfileState() {
   localStorage.setItem(PROFILE_MAX_WAVE_KEY, String(profileState.maxWave || 0));
   localStorage.setItem(PROFILE_MAX_DAMAGE_KEY, String(profileState.maxDamage || 0));
   localStorage.setItem(PROFILE_MOST_TOWERS_KEY, String(profileState.mostTowers || 0));
+  localStorage.setItem(PROFILE_FAVORITE_TOWER_KEY, profileState.favoriteTower || "");
+  localStorage.setItem(PROFILE_LEAST_FAVORITE_ENEMY_KEY, profileState.leastFavoriteEnemy || "");
+}
+
+function humanizeIdentifier(value) {
+  return String(value || "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[._-]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase()) || "None";
+}
+
+function getTowerDisplayName(type) {
+  return towerTypes[type]?.name || humanizeIdentifier(type);
+}
+
+function getEnemyDisplayName(type) {
+  return ((window.TDMData && window.TDMData.enemies && window.TDMData.enemies[type] && window.TDMData.enemies[type].name) || humanizeIdentifier(type));
+}
+
+function getFavoriteTowerName() {
+  const counts = new Map();
+  for (const tower of state.towers) {
+    if (!tower || tower.isMini) continue;
+    counts.set(tower.type, (counts.get(tower.type) || 0) + 1);
+  }
+  let bestType = "";
+  let bestCount = 0;
+  for (const [type, count] of counts.entries()) {
+    if (count > bestCount) {
+      bestType = type;
+      bestCount = count;
+    }
+  }
+  return bestType ? getTowerDisplayName(bestType) : "None";
+}
+
+function getLeastFavoriteEnemyName() {
+  let worstType = "";
+  let worstDamage = 0;
+  for (const [type, damage] of Object.entries(state.enemyDamageByType || {})) {
+    if (damage > worstDamage) {
+      worstType = type;
+      worstDamage = damage;
+    }
+  }
+  return worstType ? getEnemyDisplayName(worstType) : "None";
 }
 
 function getLeaderboardName(entry) {
@@ -1023,6 +1092,10 @@ function syncProfileModal() {
   if (ui.profileMaxWave) ui.profileMaxWave.textContent = String(profileState.maxWave || 0);
   if (ui.profileMaxDamage) ui.profileMaxDamage.textContent = String(Math.round(profileState.maxDamage || 0));
   if (ui.profileMostTowers) ui.profileMostTowers.textContent = String(profileState.mostTowers || 0);
+  if (ui.profileFavoriteTower) ui.profileFavoriteTower.textContent = profileState.favoriteTower || getFavoriteTowerName();
+  if (ui.profileLeastFavoriteEnemy) {
+    ui.profileLeastFavoriteEnemy.textContent = profileState.leastFavoriteEnemy || getLeastFavoriteEnemyName();
+  }
 }
 
 function updateProfileProgress() {
@@ -1030,6 +1103,8 @@ function updateProfileProgress() {
   const currentWave = Math.max(0, Number(state.wave || 0));
   const currentDamage = Math.max(0, Math.round(state.totalDamage || 0));
   const currentTowers = getPlacedTowerCount();
+  const favoriteTower = getFavoriteTowerName();
+  const leastFavoriteEnemy = getLeastFavoriteEnemyName();
   let changed = false;
   if (currentWave > profileState.maxWave) {
     profileState.maxWave = currentWave;
@@ -1043,12 +1118,24 @@ function updateProfileProgress() {
     profileState.mostTowers = currentTowers;
     changed = true;
   }
+  if (profileState.favoriteTower !== favoriteTower) {
+    profileState.favoriteTower = favoriteTower;
+    changed = true;
+  }
+  if (profileState.leastFavoriteEnemy !== leastFavoriteEnemy) {
+    profileState.leastFavoriteEnemy = leastFavoriteEnemy;
+    changed = true;
+  }
   if (changed) {
     persistProfileState();
   }
   if (ui.profileMaxWave) ui.profileMaxWave.textContent = String(profileState.maxWave || 0);
   if (ui.profileMaxDamage) ui.profileMaxDamage.textContent = String(Math.round(profileState.maxDamage || 0));
   if (ui.profileMostTowers) ui.profileMostTowers.textContent = String(profileState.mostTowers || 0);
+  if (ui.profileFavoriteTower) ui.profileFavoriteTower.textContent = profileState.favoriteTower || favoriteTower;
+  if (ui.profileLeastFavoriteEnemy) {
+    ui.profileLeastFavoriteEnemy.textContent = profileState.leastFavoriteEnemy || leastFavoriteEnemy;
+  }
 }
 
 function openProfileModal() {
@@ -1263,6 +1350,12 @@ function getEnemySeparationRadius(enemy) {
   return Math.max(8, getEnemyRadius(enemy) * 0.9);
 }
 
+function allocateEnemyPackId() {
+  const nextId = Number.isFinite(state.nextEnemyPackId) ? state.nextEnemyPackId : 1;
+  state.nextEnemyPackId = nextId + 1;
+  return nextId;
+}
+
 function findBlockingEnemy(enemy, nextX, nextY) {
   const enemyProgress = getEnemyProgress(enemy);
   let blocker = null;
@@ -1270,6 +1363,7 @@ function findBlockingEnemy(enemy, nextX, nextY) {
   for (const other of state.enemies) {
     if (other === enemy || other.hp <= 0) continue;
     if (other.path !== enemy.path) continue;
+    if (Number.isFinite(enemy.packId) && Number.isFinite(other.packId) && enemy.packId === other.packId) continue;
     const otherProgress = getEnemyProgress(other);
     if (otherProgress <= enemyProgress) continue;
     const minGap = getEnemySeparationRadius(enemy) + getEnemySeparationRadius(other) - 2;
@@ -1815,6 +1909,7 @@ function spawnEnemy() {
     armored = true;
     darkMatter = false;
   }
+  const packId = type === "broodMother" ? allocateEnemyPackId() : undefined;
   if (type === "swarm") {
     state.waveHasSpawnedNonSpeedy = true;
     registerEnemyInEncyclopedia(type, armored, darkMatter);
@@ -1851,7 +1946,7 @@ function spawnEnemy() {
     state.waveHasSpawnedNonSpeedy = true;
   }
   registerEnemyInEncyclopedia(type, armored, darkMatter, stealth);
-  state.enemies.push(createEnemy(type, { armored, darkMatter, stealth, pathGroup }));
+  state.enemies.push(createEnemy(type, { armored, darkMatter, stealth, pathGroup, packId }));
   return true;
 }
 
@@ -1881,7 +1976,7 @@ function placeTower(type, x, y) {
   if (type === "drone" && isOnPath(x, y)) return false;
   if (data.blocksPath && isOnPath(x, y) && state.waveInProgress) return false;
   if (type === "wall" && isOnPath(x, y)) return false;
-  if (data.blocksPath && hasLiveEnemiesOnPath()) return false;
+  if (data.blocksPath && state.waveInProgress && hasLiveEnemiesNearPoint(x, y)) return false;
   for (const tower of state.towers) {
     const towerData = towerTypes[tower.type];
     if (towerData && towerData.noGridlock) continue;
@@ -5397,6 +5492,10 @@ function updateSpikeTowers(dt) {
 
 function spawnBroodlets(origin, count) {
   const pathGroup = Number.isFinite(origin.pathGroup) ? origin.pathGroup : 0;
+  const packId = Number.isFinite(origin.packId) ? origin.packId : allocateEnemyPackId();
+  if (!Number.isFinite(origin.packId)) {
+    origin.packId = packId;
+  }
   const fallbackPaths = getActivePaths();
   const pathPoints = (origin.path && origin.path.length > 0)
     ? origin.path
@@ -5416,6 +5515,7 @@ function spawnBroodlets(origin, count) {
       darkMatter: false,
       stealth: false,
       pathGroup,
+      packId,
     });
     const forward = 18 + Math.random() * 10 + i * 2;
     const lateral = (Math.random() - 0.5) * 10;
@@ -5635,6 +5735,7 @@ function updateEnemies(dt) {
       if (enemy.pathIndex >= pathPoints.length - 1) {
         const hit = enemy.castleDamage || 1;
         state.lives = Math.max(0, state.lives - hit);
+        state.enemyDamageByType[enemy.type] = (state.enemyDamageByType[enemy.type] || 0) + hit;
         if (enemy.type === "saboteur") {
           disableFactories();
         }
@@ -5865,6 +5966,11 @@ function applyDamage(enemy, amount) {
   const scaled = amount * multiplier * buffMult;
   const applied = Math.max(0, Math.min(enemy.hp, scaled));
   if (applied > 0) {
+    if (enemy.stealth) {
+      enemy.stealth = false;
+      enemy.revealed = true;
+      enemy.revealTimer = 0;
+    }
     enemy.hitFlashTimer = Math.max(enemy.hitFlashTimer || 0, 0.11);
     enemy.hitFlashColor = scaled >= enemy.hp ? "rgba(255, 110, 110, 0.9)" : "rgba(255, 255, 255, 0.9)";
   }
@@ -5958,6 +6064,7 @@ function spawnSplitEnemy(parent, tier, overrides = {}) {
     explosionVulnerable: coalesce(overrides.explosionVulnerable, parent.explosionVulnerable),
     pathOffset: coalesce(overrides.pathOffset, parent.pathOffset),
     castleDamage: coalesce(overrides.castleDamage, parent.castleDamage),
+    packId: coalesce(overrides.packId, parent.packId),
   };
   if (child.stealth) {
     child.armored = false;
@@ -8602,6 +8709,7 @@ if (ui.jasperApplyStats) {
       const onFlame = Boolean(ui.spawnEnemyOnFlame ? ui.spawnEnemyOnFlame.checked : undefined);
       const poisoned = Boolean(ui.spawnEnemyPoisoned ? ui.spawnEnemyPoisoned.checked : undefined);
       const stealth = type === "stealth";
+      const packId = type === "broodMother" ? allocateEnemyPackId() : undefined;
       for (let i = 0; i < count; i += 1) {
         if (type === "swarm") {
           registerEnemyInEncyclopedia(type, armored, darkMatter);
@@ -8612,7 +8720,7 @@ if (ui.jasperApplyStats) {
           continue;
         }
         registerEnemyInEncyclopedia(type, armored, darkMatter, stealth);
-        state.enemies.push(createEnemy(type, { armored, darkMatter, onFlame, poisoned, radioactive, stealth, pathGroup: coalesce(chooseOpenSpawnPathGroup(), 0) }));
+        state.enemies.push(createEnemy(type, { armored, darkMatter, onFlame, poisoned, radioactive, stealth, pathGroup: coalesce(chooseOpenSpawnPathGroup(), 0), packId }));
       }
     });
   }
@@ -8776,9 +8884,11 @@ function resetGame() {
   state.gold = 200;
   state.wave = 0;
   state.totalDamage = 0;
+  state.nextEnemyPackId = 1;
   state.placing = null;
   state.towers = [];
   state.enemies = [];
+  state.enemyDamageByType = {};
   state.projectiles = [];
   state.beams = [];
   state.explosions = [];

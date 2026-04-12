@@ -120,6 +120,7 @@
       explosionVulnerable: type === "swarmlet",
       pathOffset,
       pathGroup,
+      packId: coalesce(options.packId, 0),
       castleDamage: baseCastleDamage,
       umbrellaRadius: isAegis ? grid.size * 2 : 0,
       umbrellaShielded: false,
