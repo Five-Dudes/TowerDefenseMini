@@ -741,6 +741,12 @@ function notificationsSuppressed() {
 
 function getSourceAnchor(source) {
   if (!source) return null;
+  if (source.type === "drone") {
+    return {
+      x: coalesce(source.x, source.baseX),
+      y: coalesce(source.y, source.baseY),
+    };
+  }
   return {
     x: coalesce(source.baseX, source.x),
     y: coalesce(source.baseY, source.y),
@@ -1323,7 +1329,7 @@ function spawnEnemy() {
   const allowArmored = state.wave >= 5;
   const allowStealthRoll = state.wave >= 4;
   const allowDarkMatter = state.wave >= 17;
-  if (allowArmored && Math.random() < 0.18) armored = true;
+  if (allowArmored && type !== "stealth" && Math.random() < 0.18) armored = true;
   if (allowDarkMatter && Math.random() < 0.15) darkMatter = true;
   if (allowStealthRoll && Math.random() < 0.18) stealth = true;
   if (type === "diamond" || type === "boss_diamond") {
@@ -1373,7 +1379,7 @@ function spawnEnemy() {
 function registerEnemyInEncyclopedia(type, armored, darkMatter, stealth = false) {
   const entryKey = isBossType(type) ? "boss" : type;
   state.encyclopedia.add(entryKey);
-  if (armored) {
+  if (armored && type !== "stealth" && !stealth) {
     state.encyclopedia.add("armored");
   }
   if (darkMatter) {
