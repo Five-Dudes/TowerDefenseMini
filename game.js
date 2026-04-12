@@ -58,11 +58,13 @@ const appwriteAccount = appwriteClient && appwriteApi.Account ? new appwriteApi.
 const APPWRITE_ENDPOINT_KEY = "tdm_appwrite_endpoint";
 const APPWRITE_PROJECT_KEY = "tdm_appwrite_project";
 const APPWRITE_PROJECT_ID = "69db9f4c0018c3070ee8";
+const APPWRITE_ENDPOINT = "https://nyc.cloud.appwrite.io/v1";
+const APPWRITE_REDIRECT_URL = "https://appwrite.network";
 const loginState = {
   email: "",
   loggedIn: false,
   loading: false,
-  endpoint: localStorage.getItem(APPWRITE_ENDPOINT_KEY) || "https://cloud.appwrite.io/v1",
+  endpoint: localStorage.getItem(APPWRITE_ENDPOINT_KEY) || APPWRITE_ENDPOINT,
   project: APPWRITE_PROJECT_ID,
 };
 
@@ -810,7 +812,7 @@ async function submitLogin() {
     setLoginStatus("Appwrite SDK is not available.");
     return;
   }
-  const endpoint = loginState.endpoint || "https://cloud.appwrite.io/v1";
+  const endpoint = APPWRITE_ENDPOINT;
   const project = APPWRITE_PROJECT_ID;
   if (!endpoint || !project) {
     setLoginStatus("Endpoint and project ID are required.");
@@ -825,10 +827,7 @@ async function submitLogin() {
     localStorage.setItem(APPWRITE_ENDPOINT_KEY, endpoint);
     localStorage.setItem(APPWRITE_PROJECT_KEY, project);
     configureAppwriteClient();
-    const redirectUrl = `${window.location.origin}${window.location.pathname}`;
-    const provider = appwriteApi.OAuthProvider ? appwriteApi.OAuthProvider.Google : "google";
-    const account = appwriteAccount;
-    await account.createOAuth2Session(provider, redirectUrl, redirectUrl, []);
+    await login();
   } catch (error) {
     loginState.loggedIn = false;
     setLoginStatus(`Login failed: ${error?.message || error}`);
@@ -836,6 +835,10 @@ async function submitLogin() {
     loginState.loading = false;
     syncLoginButtons();
   }
+}
+
+function login() {
+  return appwriteAccount.createOAuth2Session("google", APPWRITE_REDIRECT_URL, APPWRITE_REDIRECT_URL);
 }
 
 function notificationsSuppressed() {
