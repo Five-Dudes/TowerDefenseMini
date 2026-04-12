@@ -1334,7 +1334,8 @@ function spawnEnemy() {
     state.waveHasSpawnedNonSpeedy = true;
     registerEnemyInEncyclopedia(type, armored, darkMatter);
     const paths = getActivePaths();
-    const pathPoints = paths[pathGroup] || paths[0];
+    const spawnGroup = Number.isFinite(pathGroup) ? pathGroup : 0;
+    const pathPoints = paths[spawnGroup] || paths[0];
     const start = pathPoints && pathPoints[0] ? pathPoints[0] : { x: 0, y: 0 };
     const next = pathPoints && pathPoints[1] ? pathPoints[1] : { x: start.x + 1, y: start.y };
     const dx = next.x - start.x;
@@ -1355,7 +1356,7 @@ function spawnEnemy() {
         armored: false,
         darkMatter: false,
         stealth: false,
-        pathGroup,
+        pathGroup: spawnGroup,
         pathOffset,
       }));
     }
@@ -3083,9 +3084,6 @@ function fireProjectile(tower, enemy, stats) {
       if (enemy.hp <= 0) {
         handleEnemyDeath(enemy);
       }
-      return;
-    }
-    if (meleeOnly) {
       return;
     }
     const fireHoming = (x, y, dmg, speed) => {
