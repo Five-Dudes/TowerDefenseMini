@@ -204,6 +204,7 @@ for (const requiredId of ["easy-btn", "medium-btn", "hard-btn", "tutorial-btn"])
   }
 }
 syncLoginButtons();
+void refreshLoginState();
 
 const buildButtons = {
   watch: ui.buildWatch,
@@ -773,15 +774,36 @@ function syncLoginButtons() {
   if (ui.gameLoginBtn) ui.gameLoginBtn.disabled = loginState.loading;
 }
 
+function configureAppwriteClient() {
+  if (!appwriteClient) return false;
+  if (!loginState.endpoint || !loginState.project) return false;
+  appwriteClient.setEndpoint(loginState.endpoint).setProject(loginState.project);
+  return true;
+}
+
+async function refreshLoginState() {
+  if (!appwriteAccount || !configureAppwriteClient()) {
+    syncLoginButtons();
+    return;
+  }
+  try {
+    const account = await appwriteAccount.get();
+    loginState.loggedIn = true;
+    loginState.email = account?.email || account?.name || "Google user";
+    setLoginStatus(`Signed in as ${loginState.email}.`);
+  } catch {
+    loginState.loggedIn = false;
+  }
+  syncLoginButtons();
+}
+
 function openLoginModal() {
   if (!ui.loginModal) return;
   if (ui.loginEndpoint) ui.loginEndpoint.value = loginState.endpoint || "";
   if (ui.loginProject) ui.loginProject.value = loginState.project || "";
-  if (ui.loginEmail) ui.loginEmail.value = loginState.email || "";
-  if (ui.loginPassword) ui.loginPassword.value = "";
   setLoginStatus(loginState.loggedIn
-    ? `Logged in as ${loginState.email || "Appwrite user"}.`
-    : "Enter your Appwrite endpoint, project ID, email, and password.");
+    ? `Logged in as ${loginState.email || "Google user"}.`
+    : "Enter your Appwrite endpoint and project ID, then continue with Google.");
   ui.loginModal.classList.remove("hidden");
 }
 
@@ -796,30 +818,22 @@ async function submitLogin() {
   }
   const endpoint = (ui.loginEndpoint ? ui.loginEndpoint.value.trim() : "") || loginState.endpoint;
   const project = (ui.loginProject ? ui.loginProject.value.trim() : "") || loginState.project;
-  const email = ui.loginEmail ? ui.loginEmail.value.trim() : "";
-  const password = ui.loginPassword ? ui.loginPassword.value : "";
-  if (!endpoint || !project || !email || !password) {
-    setLoginStatus("Endpoint, project ID, email, and password are required.");
+  if (!endpoint || !project) {
+    setLoginStatus("Endpoint and project ID are required.");
     return;
   }
   loginState.loading = true;
   syncLoginButtons();
-  setLoginStatus("Logging in...");
+  setLoginStatus("Redirecting to Google...");
   try {
-    appwriteClient.setEndpoint(endpoint).setProject(project);
-    await appwriteAccount.createEmailPasswordSession({
-      email,
-      password,
-    });
-    loginState.loggedIn = true;
-    loginState.email = email;
     loginState.endpoint = endpoint;
     loginState.project = project;
     localStorage.setItem(APPWRITE_ENDPOINT_KEY, endpoint);
     localStorage.setItem(APPWRITE_PROJECT_KEY, project);
-    setLoginStatus(`Logged in as ${loginState.email}.`);
-    syncLoginButtons();
-    closeLoginModal();
+    configureAppwriteClient();
+    const redirectUrl = `${window.location.origin}${window.location.pathname}`;
+    const provider = appwriteApi.OAuthProvider ? appwriteApi.OAuthProvider.Google : "google";
+    await appwriteAccount.createOAuth2Session(provider, redirectUrl, redirectUrl, []);
   } catch (error) {
     loginState.loggedIn = false;
     setLoginStatus(`Login failed: ${error?.message || error}`);
