@@ -369,6 +369,21 @@ button:focus-visible {
 
 .profile-card {
   min-height: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.profile-card .profile-layout {
+  padding-right: 4px;
+}
+
+.profile-card .profile-actions {
+  position: sticky;
+  bottom: 0;
+  padding-top: 10px;
+  margin-top: 4px;
+  background: linear-gradient(180deg, rgba(7, 12, 24, 0), rgba(7, 12, 24, 0.92) 18%);
 }
 
 .leaderboard-card {
