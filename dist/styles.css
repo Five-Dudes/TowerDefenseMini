@@ -737,14 +737,19 @@ select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
+  width: 100%;
   border: 1px solid rgba(125, 211, 252, 0.48);
   border-radius: 10px;
-  padding: 6px 28px 6px 10px;
+  padding: 5px 30px 5px 10px;
   background:
     linear-gradient(135deg, rgba(11, 22, 41, 0.98), rgba(16, 36, 68, 0.96)) padding-box,
-    linear-gradient(135deg, rgba(11, 22, 41, 0.98), rgba(16, 36, 68, 0.96)) border-box;
+    linear-gradient(135deg, rgba(11, 22, 41, 0.98), rgba(16, 36, 68, 0.96)) border-box,
+    linear-gradient(45deg, transparent 50%, rgba(223, 242, 255, 0.9) 50%) right 12px center / 6px 6px no-repeat,
+    linear-gradient(135deg, rgba(223, 242, 255, 0.9), rgba(223, 242, 255, 0.9)) right 16px center / 6px 2px no-repeat;
   color: var(--text);
   cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -753,7 +758,7 @@ select {
 }
 
 select:hover {
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.01);
   box-shadow: 0 12px 26px rgba(7, 16, 32, 0.75);
   background: linear-gradient(135deg, rgba(16, 31, 58, 1), rgba(18, 44, 82, 0.98));
   filter: brightness(1.07);
