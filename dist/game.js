@@ -1362,16 +1362,30 @@ function getEnemyDefinition(type) {
   return enemyDefinitions[type] || null;
 }
 
+function getTowerDefinition(type) {
+  return towerTypes[type] || null;
+}
+
+function invokeTowerHook(tower, hookName, payload = {}) {
+  const definition = tower && getTowerDefinition(tower.type);
+  const hook = definition && definition[hookName];
+  if (typeof hook !== "function") return undefined;
+  return hook({
+    tower,
+    state,
+    ...payload,
+  });
+}
+
 function invokeEnemyHook(enemy, hookName, payload = {}) {
   const definition = enemy && getEnemyDefinition(enemy.type);
   const hook = definition && definition[hookName];
-  if (typeof hook !== "function") return false;
-  hook({
+  if (typeof hook !== "function") return undefined;
+  return hook({
     enemy,
     state,
     ...payload,
   });
-  return true;
 }
 
 function findBlockingEnemy(enemy, nextX, nextY) {
@@ -5171,6 +5185,14 @@ function updateTowers(dt) {
     const data = stats.data;
     if (tower.disabled || tower.stunTimer > 0) continue;
     if (data.isFactory) {
+      if (invokeTowerHook(tower, "onTick", {
+        dt,
+        stats,
+        awardGold,
+        updateHud,
+      })) {
+        continue;
+      }
       if (tower.factoryDisabled && tower.factoryRepairing) {
         tower.factoryRepairTimer = Math.max(0, (tower.factoryRepairTimer || 0) - dt);
         if (tower.factoryRepairTimer <= 0) {
@@ -5226,6 +5248,25 @@ function updateTowers(dt) {
     const target = selectTarget(tower, stats);
     if (target) {
       tower.aimAngle = Math.atan2(target.y - tower.y, target.x - tower.x);
+    }
+    if (invokeTowerHook(tower, "onTick", {
+      dt,
+      stats,
+      range,
+      target,
+      getTowerMuzzlePoint,
+      selectTarget,
+      fireLaser,
+      emitFreezeGas,
+      fireFlameCone,
+      fireProjectile,
+      ensureDroneMinis,
+      applyArmorHit,
+      applyExplosionDamage,
+      handleEnemyDeath,
+      playAttackImpactSound,
+    })) {
+      continue;
     }
     if (tower.type === "drone") {
       ensureDroneMinis(tower, stats);
@@ -5322,8 +5363,18 @@ function updateFloorSpikes(dt) {
   if (!Number.isFinite(dt) || dt <= 0) return;
   for (const spike of state.towers) {
     if (spike.type !== "floorSpike") continue;
-    try {
     const stats = getTowerStats(spike);
+    if (invokeTowerHook(spike, "onTick", {
+      dt,
+      stats,
+      applyDamage,
+      applySupportEffectsToEnemy,
+      getSupportEffectsForSource,
+      playAttackImpactSound,
+    })) {
+      continue;
+    }
+    try {
     const damage = (stats && stats.floorSpikeDamage) || data.damage || 0;
     const triggerRadius = (stats && stats.floorSpikeTriggerRadius) || data.triggerRadius || 18;
     const extendSpeed = (stats && stats.floorSpikeExtendSpeed) || data.spikeExtendSpeed || 9;
@@ -5494,6 +5545,18 @@ function updateSpikeTowers(dt) {
     if (tower.disabled || tower.stunTimer > 0) continue;
     const stats = getTowerStats(tower);
     if (!stats) continue;
+    if (invokeTowerHook(tower, "onTick", {
+      dt,
+      stats,
+      getSpikeDirections,
+      applyDamage,
+      applySupportEffectsToEnemy,
+      getSupportEffectsForSource,
+      playAttackImpactSound,
+      ensureEnemyPath,
+    })) {
+      continue;
+    }
     updateSpikeTower(tower, dt, stats);
   }
 }
@@ -5517,40 +5580,6 @@ function updateEnemies(dt) {
       enemy.healFlashTimer = Math.max(0, enemy.healFlashTimer - dt);
     }
   }
-  const umbrellas = state.enemies.filter((enemy) => enemy.type === "aegis" && enemy.hp > 0);
-  if (umbrellas.length > 0) {
-    for (const enemy of state.enemies) {
-      if (enemy.hp <= 0) continue;
-      for (const umbrella of umbrellas) {
-        const radius = umbrella.umbrellaRadius || grid.size * 2;
-        const dist = Math.hypot(enemy.x - umbrella.x, enemy.y - umbrella.y);
-        if (dist <= radius) {
-          enemy.umbrellaShielded = true;
-          break;
-        }
-      }
-    }
-  }
-  const buffers = state.enemies.filter((enemy) => enemy.buffer && enemy.hp > 0);
-  if (buffers.length > 0) {
-    for (const enemy of state.enemies) {
-      if (enemy.hp <= 0) continue;
-      for (const buffer of buffers) {
-        const radius = buffer.buffRadius || grid.size * 2.4;
-        const dist = Math.hypot(enemy.x - buffer.x, enemy.y - buffer.y);
-        if (dist <= radius) {
-          if ((enemy.antiHealTimer || 0) <= 0) {
-            enemy.buffed = true;
-            if (enemy.hp < enemy.maxHp) {
-              enemy.hp = Math.min(enemy.maxHp, enemy.hp + (buffer.healRate || 0) * dt);
-              enemy.healFlashTimer = Math.max(enemy.healFlashTimer || 0, 0.4);
-            }
-          }
-          break;
-        }
-      }
-    }
-  }
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) {
       handleEnemyDeath(enemy);
@@ -5559,51 +5588,17 @@ function updateEnemies(dt) {
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0 || !enemy.deadProcessed);
   for (const enemy of state.enemies) {
     ensureEnemyPath(enemy);
-    if (enemy.thief) {
-      enemy.stealTimer = Math.max(0, (enemy.stealTimer || 0) - dt);
-      if (enemy.stealTimer <= 0) {
-        const stolen = 2 + Math.floor(Math.random() * 9);
-        state.gold = Math.max(0, state.gold - stolen);
-        enemy.stealTimer = 2;
-      }
-    }
-    if (enemy.saboteur) {
-      enemy.sabotageTimer = Math.max(0, (enemy.sabotageTimer || 0) - dt);
-      if (enemy.sabotageTimer <= 0) {
-        const radius = grid.size * 2;
-        let closest = null;
-        let best = Infinity;
-        for (const trap of state.traps) {
-          const dist = Math.hypot(trap.x - enemy.x, trap.y - enemy.y);
-          if (dist <= radius && dist < best) {
-            closest = trap;
-            best = dist;
-          }
-        }
-        if (closest) {
-          closest.disabledTimer = Math.max(closest.disabledTimer || 0, 3);
-        }
-        let towerTarget = null;
-        let towerBest = Infinity;
-        for (const tower of state.towers) {
-          if (tower.type === "wall" || tower.type === "mine") continue;
-          const dist = Math.hypot(tower.x - enemy.x, tower.y - enemy.y);
-          if (dist <= radius && dist < towerBest) {
-            towerTarget = tower;
-            towerBest = dist;
-          }
-        }
-        if (towerTarget) {
-          towerTarget.stunTimer = Math.max(towerTarget.stunTimer || 0, 1.5);
-        }
-        enemy.sabotageTimer = 2.2;
-      }
-    }
     if (!invokeEnemyHook(enemy, "onTick", {
       dt,
+      grid,
       getActivePaths,
       createEnemy,
       allocateEnemyPackId,
+      getEnemyProgress,
+      getEnemyRadius,
+      getTowerStats,
+      getSupportEffectsForSource,
+      playAttackImpactSound,
     }) && enemy.broodMother) {
       enemy.broodTimer = Math.max(0, (enemy.broodTimer || 0) - dt);
       if (enemy.broodTimer <= 0) {
@@ -5677,14 +5672,6 @@ function updateEnemies(dt) {
     const speed = enemy.speed * (1 - slowFactor);
     const pathPoints = enemy.path && enemy.path.length > 0 ? enemy.path : (getActivePaths()[0] || []);
     if (!pathPoints || pathPoints.length < 2) continue;
-    if (enemy.troll) {
-      enemy.backtrackCooldown = Math.max(0, (enemy.backtrackCooldown || 0) - dt);
-      const progress = getEnemyProgress(enemy);
-      if (enemy.backtrackCooldown <= 0 && progress >= 1.25 && (enemy.pathIndex || 0) > 1 && Math.random() < 0.08) {
-        enemy.backtrackTimer = 0.6;
-        enemy.backtrackCooldown = 2.2;
-      }
-    }
     const backtracking = enemy.backtrackTimer > 0 && enemy.pathIndex > 0;
     if (enemy.backtrackTimer > 0) {
       enemy.backtrackTimer = Math.max(0, enemy.backtrackTimer - dt);
@@ -6061,78 +6048,62 @@ function handleEnemyDeath(enemy) {
   const bonusLives = state.factoryKillLifeBonus || 0;
   const dropLives = enemy.dropLives || 0;
   const dropGoldMult = enemy.dropGoldMult || 0;
-  if (enemy.type === "buffer") {
-    const radius = enemy.buffRadius || grid.size * 2.4;
-    const healColor = "rgba(34, 197, 94, 0.45)";
-    state.explosions.push({
-      x: enemy.x,
-      y: enemy.y,
-      radius,
-      ttl: 0.5,
-      color: healColor,
-    });
-    for (const ally of state.enemies) {
-      if (ally === enemy || ally.hp <= 0) continue;
-      const dist = Math.hypot(ally.x - enemy.x, ally.y - enemy.y);
-    if (dist > radius) continue;
-    const healAmount = Math.min(40, Math.max(8, ally.maxHp * 0.15));
-    if ((ally.antiHealTimer || 0) <= 0) {
-      ally.hp = Math.min(ally.maxHp, ally.hp + healAmount);
-      ally.tempBuffTimer = Math.max(ally.tempBuffTimer || 0, 3);
-      ally.buffed = true;
-      ally.healFlashTimer = Math.max(ally.healFlashTimer || 0, 0.6);
+  const handled = invokeEnemyHook(enemy, "onDeath", {
+    spawnSplitEnemy,
+    getEnemyRadius,
+    awardGold,
+  });
+  if (!handled) {
+    if (enemy.type === "diamond" || enemy.type === "boss_diamond") {
+      const dropType = Math.random() < 0.5 ? "heavy" : "speedy";
+      const childTier = Math.max(1, enemy.tier - 1);
+      spawnSplitEnemy(enemy, childTier, {
+        type: dropType,
+        armored: false,
+        darkMatter: false,
+        stealth: false,
+        revealed: true,
+        immuneHeat: false,
+        immuneExplosion: false,
+        explosionVulnerable: dropType === "speedy" ? true : false,
+      });
+    } else if (enemy.type === "chimera") {
+      const childTier = Math.max(1, enemy.tier - 1);
+      spawnSplitEnemy(enemy, childTier, {
+        type: "flying",
+        armored: false,
+        darkMatter: false,
+        stealth: true,
+        revealed: false,
+        immuneHeat: false,
+        immuneExplosion: false,
+        explosionVulnerable: false,
+      });
+      spawnSplitEnemy(enemy, childTier, {
+        type: "flying",
+        armored: true,
+        darkMatter: false,
+        stealth: false,
+        revealed: true,
+        immuneHeat: false,
+        immuneExplosion: false,
+        explosionVulnerable: false,
+      });
+      spawnSplitEnemy(enemy, childTier, {
+        type: "flying",
+        armored: false,
+        darkMatter: false,
+        stealth: false,
+        revealed: true,
+        immuneHeat: false,
+        immuneExplosion: false,
+        explosionVulnerable: false,
+      });
+    } else if (enemy.type !== "swarmlet" && enemy.tier > 1 && !enemy.isBoss) {
+      const nextTier = enemy.tier - 1;
+      spawnSplitEnemy(enemy, nextTier);
+      spawnSplitEnemy(enemy, nextTier);
     }
-  }
-  }
-  if (enemy.type === "diamond" || enemy.type === "boss_diamond") {
-    const dropType = Math.random() < 0.5 ? "heavy" : "speedy";
-    const childTier = Math.max(1, enemy.tier - 1);
-    spawnSplitEnemy(enemy, childTier, {
-      type: dropType,
-      armored: false,
-      darkMatter: false,
-      stealth: false,
-      revealed: true,
-      immuneHeat: false,
-      immuneExplosion: false,
-      explosionVulnerable: dropType === "speedy" ? true : false,
-    });
-  } else if (enemy.type === "chimera") {
-    const childTier = Math.max(1, enemy.tier - 1);
-    spawnSplitEnemy(enemy, childTier, {
-      type: "flying",
-      armored: false,
-      darkMatter: false,
-      stealth: true,
-      revealed: false,
-      immuneHeat: false,
-      immuneExplosion: false,
-      explosionVulnerable: false,
-    });
-    spawnSplitEnemy(enemy, childTier, {
-      type: "flying",
-      armored: true,
-      darkMatter: false,
-      stealth: false,
-      revealed: true,
-      immuneHeat: false,
-      immuneExplosion: false,
-      explosionVulnerable: false,
-    });
-    spawnSplitEnemy(enemy, childTier, {
-      type: "flying",
-      armored: false,
-      darkMatter: false,
-      stealth: false,
-      revealed: true,
-      immuneHeat: false,
-      immuneExplosion: false,
-      explosionVulnerable: false,
-    });
-  } else if (enemy.type !== "swarmlet" && enemy.tier > 1 && !enemy.isBoss) {
-    const nextTier = enemy.tier - 1;
-    spawnSplitEnemy(enemy, nextTier);
-    spawnSplitEnemy(enemy, nextTier);
   }
   const baseGold = 8 + bonusGold;
   const goldMult = dropGoldMult && dropGoldMult > 1 ? dropGoldMult : 1;

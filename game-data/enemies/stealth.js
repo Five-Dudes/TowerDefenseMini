@@ -10,6 +10,7 @@
       enemy.stealth = false;
       enemy.revealed = true;
       enemy.revealTimer = 0;
+      return true;
     },
   });
 })(window);

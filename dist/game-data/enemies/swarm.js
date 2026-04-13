@@ -46,6 +46,7 @@
         brood.pathIndex = Math.min((enemy.pathIndex || 0) + 1, pathPoints.length - 2);
         state.enemies.push(brood);
       }
+      return true;
     },
   });
 })(window);

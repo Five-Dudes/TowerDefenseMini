@@ -53,6 +53,7 @@
         state.enemies.push(brood);
       }
       enemy.broodTimer = 2.6;
+      return true;
     },
   });
 })(window);

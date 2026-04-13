@@ -12,6 +12,14 @@
     burnDps: 12,
     burnDuration: 2.4,
     blocksPath: true,
+    onTick(context) {
+      const { tower, stats, target, fireFlameCone, dt } = context;
+      tower.cooldown = Math.max(0, (tower.cooldown || 0) - (dt || 0));
+      if (!target || tower.cooldown > 0) return true;
+      fireFlameCone(tower, target, stats);
+      tower.cooldown = stats.rate;
+      return true;
+    },
     onFire(context) {
       const {
         tower,
