@@ -71,6 +71,16 @@ const PROFILE_MAX_DAMAGE_KEY = "tdm_profile_max_damage";
 const PROFILE_MOST_TOWERS_KEY = "tdm_profile_most_towers";
 const PROFILE_FAVORITE_TOWER_KEY = "tdm_profile_favorite_tower";
 const PROFILE_LEAST_FAVORITE_ENEMY_KEY = "tdm_profile_least_favorite_enemy";
+const PROFILE_ACTIVE_TITLE_KEY = "tdm_profile_active_title";
+const PROFILE_UNLOCKED_TITLES_KEY = "tdm_profile_unlocked_titles";
+function loadUnlockedTitles() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROFILE_UNLOCKED_TITLES_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
 const loginState = {
   email: "",
   loggedIn: false,
@@ -88,6 +98,16 @@ const profileState = {
   mostTowers: Number(localStorage.getItem(PROFILE_MOST_TOWERS_KEY) || 0),
   favoriteTower: localStorage.getItem(PROFILE_FAVORITE_TOWER_KEY) || "",
   leastFavoriteEnemy: localStorage.getItem(PROFILE_LEAST_FAVORITE_ENEMY_KEY) || "",
+  activeTitle: localStorage.getItem(PROFILE_ACTIVE_TITLE_KEY) || "",
+  unlockedTitles: loadUnlockedTitles(),
+};
+
+const titleCatalog = {
+  mythologicalBeast: {
+    id: "mythologicalBeast",
+    name: "The Mythological Beast",
+    desc: "Earned for beating Chimera for the first time.",
+  },
 };
 
 const leaderboardState = {
@@ -146,6 +166,9 @@ const ui = {
   profileMostTowers: document.getElementById("profile-most-towers"),
   profileFavoriteTower: document.getElementById("profile-favorite-tower"),
   profileLeastFavoriteEnemy: document.getElementById("profile-least-favorite-enemy"),
+  profileTitleSelect: document.getElementById("profile-title-select"),
+  applyProfileTitle: document.getElementById("apply-profile-title"),
+  profileTitleCurrent: document.getElementById("profile-title-current"),
   saveProfile: document.getElementById("save-profile"),
   profileLogout: document.getElementById("profile-logout"),
   closeProfile: document.getElementById("close-profile"),
@@ -913,6 +936,8 @@ function persistProfileState() {
   localStorage.setItem(PROFILE_MOST_TOWERS_KEY, String(profileState.mostTowers || 0));
   localStorage.setItem(PROFILE_FAVORITE_TOWER_KEY, profileState.favoriteTower || "");
   localStorage.setItem(PROFILE_LEAST_FAVORITE_ENEMY_KEY, profileState.leastFavoriteEnemy || "");
+  localStorage.setItem(PROFILE_ACTIVE_TITLE_KEY, profileState.activeTitle || "");
+  localStorage.setItem(PROFILE_UNLOCKED_TITLES_KEY, JSON.stringify(profileState.unlockedTitles || []));
 }
 
 function humanizeIdentifier(value) {
@@ -959,6 +984,48 @@ function getLeastFavoriteEnemyName() {
     }
   }
   return worstType ? getEnemyDisplayName(worstType) : "None";
+}
+
+function getTitleDefinition(titleId) {
+  return titleCatalog[titleId] || null;
+}
+
+function getUnlockedTitleOptions() {
+  const ids = Array.isArray(profileState.unlockedTitles) ? profileState.unlockedTitles : [];
+  return ids
+    .map((id) => getTitleDefinition(id))
+    .filter(Boolean);
+}
+
+function getActiveTitleName() {
+  return getTitleDefinition(profileState.activeTitle)?.name || "";
+}
+
+function unlockProfileTitle(titleId) {
+  const definition = getTitleDefinition(titleId);
+  if (!definition) return false;
+  const unlocked = new Set(Array.isArray(profileState.unlockedTitles) ? profileState.unlockedTitles : []);
+  if (unlocked.has(titleId)) return false;
+  unlocked.add(titleId);
+  profileState.unlockedTitles = [...unlocked];
+  if (!profileState.activeTitle) {
+    profileState.activeTitle = titleId;
+  }
+  persistProfileState();
+  syncProfileModal();
+  syncLoginButtons();
+  setLoginStatus(`Title unlocked: ${definition.name}.`);
+  return true;
+}
+
+function applySelectedProfileTitle() {
+  const nextTitle = ui.profileTitleSelect ? String(ui.profileTitleSelect.value || "") : "";
+  if (nextTitle && !getTitleDefinition(nextTitle)) return;
+  if (nextTitle && !profileState.unlockedTitles.includes(nextTitle)) return;
+  profileState.activeTitle = nextTitle;
+  persistProfileState();
+  syncProfileModal();
+  syncLoginButtons();
 }
 
 function getLeaderboardName(entry) {
@@ -1082,6 +1149,7 @@ function closeLeaderboardModal() {
 
 function syncProfileModal() {
   const displayName = profileState.name || loginState.email || "Commander";
+  const unlockedTitles = getUnlockedTitleOptions();
   if (ui.profileEmail) {
     ui.profileEmail.textContent = loginState.email ? `Signed in as ${loginState.email}` : "No active session";
   }
@@ -1097,6 +1165,26 @@ function syncProfileModal() {
   if (ui.profileFavoriteTower) ui.profileFavoriteTower.textContent = profileState.favoriteTower || getFavoriteTowerName();
   if (ui.profileLeastFavoriteEnemy) {
     ui.profileLeastFavoriteEnemy.textContent = profileState.leastFavoriteEnemy || getLeastFavoriteEnemyName();
+  }
+  if (ui.profileTitleCurrent) {
+    const titleName = getActiveTitleName();
+    ui.profileTitleCurrent.textContent = titleName ? `Equipped title: ${titleName}` : "No title equipped";
+  }
+  if (ui.profileTitleSelect) {
+    ui.profileTitleSelect.innerHTML = "";
+    const noneOption = document.createElement("option");
+    noneOption.value = "";
+    noneOption.textContent = unlockedTitles.length > 0 ? "No title equipped" : "No titles unlocked";
+    ui.profileTitleSelect.appendChild(noneOption);
+    for (const title of unlockedTitles) {
+      const option = document.createElement("option");
+      option.value = title.id;
+      option.textContent = title.name;
+      option.selected = profileState.activeTitle === title.id;
+      ui.profileTitleSelect.appendChild(option);
+    }
+    ui.profileTitleSelect.value = profileState.activeTitle || "";
+    ui.profileTitleSelect.disabled = unlockedTitles.length === 0;
   }
 }
 
@@ -1191,7 +1279,9 @@ function syncLoginButtons() {
   if (ui.userWelcome) {
     ui.userWelcome.classList.toggle("hidden", !loginState.loggedIn);
     const displayName = profileState.name || loginState.email || "Google user";
-    ui.userWelcome.textContent = loginState.loggedIn ? `WELCOME, COMMANDER ${String(displayName).toUpperCase()}` : "";
+    const titlePrefix = getActiveTitleName();
+    const prefixText = titlePrefix ? `${titlePrefix.toUpperCase()} ` : "";
+    ui.userWelcome.textContent = loginState.loggedIn ? `WELCOME, ${prefixText}COMMANDER ${String(displayName).toUpperCase()}` : "";
   }
   if (ui.logoutButton) {
     ui.logoutButton.classList.toggle("hidden", !loginState.loggedIn);
@@ -6052,6 +6142,7 @@ function handleEnemyDeath(enemy) {
     spawnSplitEnemy,
     getEnemyRadius,
     awardGold,
+    unlockProfileTitle,
   });
   if (!handled) {
     if (enemy.type === "diamond" || enemy.type === "boss_diamond") {
@@ -8558,6 +8649,10 @@ if (ui.loginModal) {
 
 if (ui.saveProfile) {
   ui.saveProfile.addEventListener("click", saveProfile);
+}
+
+if (ui.applyProfileTitle) {
+  ui.applyProfileTitle.addEventListener("click", applySelectedProfileTitle);
 }
 
 if (ui.profileAvatarInput) {

@@ -525,6 +525,34 @@ button:focus-visible {
   text-align: left;
 }
 
+.profile-title-panel {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.profile-title-panel label {
+  display: grid;
+  gap: 6px;
+}
+
+.profile-title-panel select {
+  width: 100%;
+}
+
+.profile-title-panel button {
+  justify-self: start;
+}
+
+.profile-title-current {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 20, 40, 0.4);
+  border: 1px solid rgba(52, 152, 219, 0.25);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .profile-actions {
   display: flex;
   justify-content: flex-end;

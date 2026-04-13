@@ -6,7 +6,10 @@
     desc: "Late-game menace with many traits that splits on death.",
     waveUnlock: { wave: 18, kind: "enemy", title: "Chimera", desc: "Late-game hybrid menace." },
     onDeath(context) {
-      const { enemy, spawnSplitEnemy } = context;
+      const { enemy, spawnSplitEnemy, unlockProfileTitle } = context;
+      if (typeof unlockProfileTitle === "function") {
+        unlockProfileTitle("mythologicalBeast");
+      }
       const childTier = Math.max(1, enemy.tier - 1);
       spawnSplitEnemy(enemy, childTier, {
         type: "flying",
