@@ -209,6 +209,55 @@
     return "Enemies Killed";
   }
 
+  function getLeaderboardOrderingQueries(metric = getLeaderboardState().metric) {
+    const queryApi = globalScope.appwriteApi?.Query;
+    if (!queryApi) return [];
+    const primaryField = metric === "towers" ? "towersPlaced" : metric === "waves" ? "wavesCompleted" : "enemiesKilled";
+    const secondaryField = metric === "towers" ? "enemiesKilled" : metric === "waves" ? "enemiesKilled" : "wavesCompleted";
+    const tertiaryField = metric === "towers" ? "wavesCompleted" : metric === "waves" ? "towersPlaced" : "towersPlaced";
+    return [
+      queryApi.orderDesc(primaryField),
+      queryApi.orderDesc(secondaryField),
+      queryApi.orderDesc(tertiaryField),
+      queryApi.limit(100),
+    ];
+  }
+
+  async function loadLeaderboardDocuments(metric = getLeaderboardState().metric) {
+    const leaderboardState = getLeaderboardState();
+    const ui = getUi();
+    if (!globalScope.appwriteClient || !globalScope.appwriteApi?.Databases) {
+      return [];
+    }
+    const dbId = globalScope.localStorage.getItem("tdm_appwrite_realtime_database") || "";
+    const collectionId = globalScope.localStorage.getItem("tdm_appwrite_realtime_collection") || "";
+    if (!dbId || !collectionId) {
+      if (ui.leaderboardStatus) {
+        ui.leaderboardStatus.textContent = "Set leaderboard database and collection ids to enable Realtime.";
+      }
+      leaderboardState.rows = [];
+      renderLeaderboard([]);
+      return [];
+    }
+    try {
+      const databases = new globalScope.appwriteApi.Databases(globalScope.appwriteClient);
+      const result = await databases.listDocuments(dbId, collectionId, getLeaderboardOrderingQueries(metric));
+      leaderboardState.rows = Array.isArray(result?.documents) ? result.documents.slice(0, 200) : [];
+      renderLeaderboard(leaderboardState.rows);
+      if (ui.leaderboardStatus) {
+        ui.leaderboardStatus.textContent = `Loaded ${leaderboardState.rows.length} leaderboard entries.`;
+      }
+      return leaderboardState.rows;
+    } catch (error) {
+      if (ui.leaderboardStatus) {
+        ui.leaderboardStatus.textContent = `Leaderboard load failed: ${error?.message || error}`;
+      }
+      leaderboardState.rows = [];
+      renderLeaderboard([]);
+      return [];
+    }
+  }
+
   function renderLeaderboard(rows = getLeaderboardState().rows) {
     const ui = getUi();
     const leaderboardState = getLeaderboardState();
@@ -258,19 +307,19 @@
     renderLeaderboard();
   }
 
-  function subscribeLeaderboardRealtime() {
+  async function subscribeLeaderboardRealtime() {
     const ui = getUi();
     const leaderboardState = getLeaderboardState();
     if (!globalScope.appwriteRealtimeClient || !globalScope.appwriteApi?.Client) {
       leaderboardState.subscription = null;
-      renderLeaderboard([]);
+      await loadLeaderboardDocuments();
       return;
     }
     const dbId = globalScope.localStorage.getItem("tdm_appwrite_realtime_database") || "";
     const collectionId = globalScope.localStorage.getItem("tdm_appwrite_realtime_collection") || "";
     if (!dbId || !collectionId) {
       leaderboardState.subscription = null;
-      renderLeaderboard([]);
+      await loadLeaderboardDocuments();
       if (ui.leaderboardStatus) {
         ui.leaderboardStatus.textContent = "Set leaderboard database and collection ids to enable Realtime.";
       }
@@ -278,6 +327,7 @@
     }
     try {
       globalScope.appwriteRealtimeClient.setEndpoint(globalScope.APPWRITE_ENDPOINT).setProject(globalScope.APPWRITE_PROJECT_ID);
+      await loadLeaderboardDocuments(leaderboardState.metric);
       const channel = `databases.${dbId}.collections.${collectionId}.documents`;
       leaderboardState.subscription = globalScope.appwriteRealtimeClient.subscribe(channel, (response) => {
         if (response?.payload) {
@@ -299,8 +349,11 @@
   }
 
   function initLeaderboardRealtime() {
-    renderLeaderboard([]);
-    subscribeLeaderboardRealtime();
+    void subscribeLeaderboardRealtime();
+  }
+
+  function refreshLeaderboardDocuments() {
+    return loadLeaderboardDocuments();
   }
 
   function openLeaderboardModal() {
@@ -609,6 +662,7 @@
   globalScope.getLeaderboardName = getLeaderboardName;
   globalScope.getLeaderboardMetricValue = getLeaderboardMetricValue;
   globalScope.getLeaderboardLabel = getLeaderboardLabel;
+  globalScope.refreshLeaderboardDocuments = refreshLeaderboardDocuments;
   globalScope.renderLeaderboard = renderLeaderboard;
   globalScope.updateLeaderboardUI = updateLeaderboardUI;
   globalScope.subscribeLeaderboardRealtime = subscribeLeaderboardRealtime;

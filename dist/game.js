@@ -8172,7 +8172,11 @@ if (ui.leaderboardType) {
   ui.leaderboardType.addEventListener("change", () => {
     leaderboardState.metric = ui.leaderboardType.value || "kills";
     localStorage.setItem("tdm_leaderboard_metric", leaderboardState.metric);
-    renderLeaderboard();
+    if (typeof refreshLeaderboardDocuments === "function") {
+      void refreshLeaderboardDocuments();
+    } else {
+      renderLeaderboard();
+    }
   });
 }
 
