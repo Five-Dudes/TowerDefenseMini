@@ -193,6 +193,12 @@
     return String(entry?.name || entry?.playerName || entry?.username || entry?.email || "Unknown");
   }
 
+  function formatLeaderboardDisplayName(entry) {
+    const name = getLeaderboardName(entry);
+    const title = String(entry?.title || entry?.activeTitle || entry?.equippedTitle || entry?.profileTitle || "").trim();
+    return title ? `[${title}] ${name}` : name;
+  }
+
   function getLeaderboardEmail(entry) {
     return String(entry?.email || entry?.playerEmail || entry?.userEmail || "").trim().toLowerCase();
   }
@@ -304,7 +310,7 @@
     }
     for (const [index, entry] of sorted.entries()) {
       const item = globalScope.document.createElement("li");
-      const name = getLeaderboardName(entry);
+      const name = formatLeaderboardDisplayName(entry);
       const value = Math.round(getLeaderboardMetricValue(entry));
       const label = getLeaderboardLabel();
       if (index === 0) item.classList.add("leaderboard-gold");
@@ -412,6 +418,10 @@
       email,
       playerEmail: email,
       userEmail: email,
+      title: getActiveTitleName(),
+      activeTitle: getActiveTitleName(),
+      equippedTitle: getActiveTitleName(),
+      profileTitle: getActiveTitleName(),
       wavesCompleted,
       enemiesKilled,
       towersPlaced,

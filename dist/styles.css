@@ -431,6 +431,9 @@ button:focus-visible {
   gap: 8px;
   color: var(--text);
   font-size: 0.82rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .leaderboard-list li {
@@ -457,6 +460,11 @@ button:focus-visible {
 
 .leaderboard-list li.leaderboard-bronze {
   border-color: rgba(180, 83, 9, 0.7);
+}
+
+.leaderboard-list li:nth-child(n + 4) {
+  box-shadow: none;
+  border-color: rgba(52, 152, 219, 0.2);
 }
 
 .profile-layout {
