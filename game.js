@@ -342,6 +342,8 @@ const state = {
   towers: [],
   enemies: [],
   enemyDamageByType: {},
+  totalEnemiesKilled: 0,
+  totalTowersPlaced: 0,
   nextEnemyPackId: 1,
   projectiles: [],
   beams: [],
@@ -424,6 +426,7 @@ const state = {
   waveKillsThisWave: 0,
   waveLeaksThisWave: 0,
   waveSpawnedThisWave: 0,
+  gameOverScoreSaved: false,
 };
 
 window.state = state;
@@ -1716,6 +1719,7 @@ function placeTower(type, x, y) {
     ui.buildOp.disabled = true;
   }
   state.towers.push(tower);
+  state.totalTowersPlaced = (state.totalTowersPlaced || 0) + 1;
   playSound("place");
   updateHud();
   return true;
@@ -5684,6 +5688,7 @@ function handleEnemyDeath(enemy) {
   if (enemy.escaped) return;
   playSound("death");
   state.waveKillsThisWave = (state.waveKillsThisWave || 0) + 1;
+  state.totalEnemiesKilled = (state.totalEnemiesKilled || 0) + 1;
   const bonusGold = state.factoryKillGoldBonus || 0;
   const bonusLives = state.factoryKillLifeBonus || 0;
   const dropLives = enemy.dropLives || 0;
@@ -7571,6 +7576,12 @@ function update(dt) {
     state.paused = false;
     if (ui.playArea) ui.playArea.classList.remove("paused-glitch");
     state.enemies = [];
+    if (!state.gameOverScoreSaved) {
+      state.gameOverScoreSaved = true;
+      if (typeof saveGameOverScore === "function") {
+        void saveGameOverScore();
+      }
+    }
     if (ui.gameOver) {
       ui.gameOver.classList.remove("hidden");
     }
@@ -8511,6 +8522,8 @@ function resetGame() {
   state.gold = 200;
   state.wave = 0;
   state.totalDamage = 0;
+  state.totalEnemiesKilled = 0;
+  state.totalTowersPlaced = 0;
   state.nextEnemyPackId = 1;
   state.placing = null;
   state.towers = [];
@@ -8559,6 +8572,7 @@ function resetGame() {
   state.waveKillsThisWave = 0;
   state.waveLeaksThisWave = 0;
   state.waveSpawnedThisWave = 0;
+  state.gameOverScoreSaved = false;
   state.infiniteGold = false;
   state.halfCash = false;
   state.keyBuffer = "";

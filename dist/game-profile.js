@@ -227,6 +227,8 @@
     const leaderboardState = getLeaderboardState();
     const ui = getUi();
     if (!globalScope.appwriteClient || !globalScope.appwriteApi?.Databases) {
+      leaderboardState.rows = getSavedScoreboardEntries();
+      renderLeaderboard(leaderboardState.rows);
       return [];
     }
     const dbId = globalScope.localStorage.getItem("tdm_appwrite_realtime_database") || "";
@@ -235,8 +237,8 @@
       if (ui.leaderboardStatus) {
         ui.leaderboardStatus.textContent = "Set leaderboard database and collection ids to enable Realtime.";
       }
-      leaderboardState.rows = [];
-      renderLeaderboard([]);
+      leaderboardState.rows = getSavedScoreboardEntries();
+      renderLeaderboard(leaderboardState.rows);
       return [];
     }
     try {
@@ -354,6 +356,76 @@
 
   function refreshLeaderboardDocuments() {
     return loadLeaderboardDocuments();
+  }
+
+  function getSavedScoreboardEntries() {
+    try {
+      const parsed = JSON.parse(globalScope.localStorage.getItem("tdm_saved_scores") || "[]");
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function persistSavedScoreboardEntries(entries) {
+    globalScope.localStorage.setItem("tdm_saved_scores", JSON.stringify(entries.slice(0, 100)));
+  }
+
+  function buildScoreEntry() {
+    const state = getState();
+    const profileState = getProfileState();
+    const loginState = getLoginState();
+    const name = profileState.name || loginState.email || "Player";
+    const towersPlaced = Math.max(0, Number(state.totalTowersPlaced || state.towers?.length || 0));
+    const enemiesKilled = Math.max(0, Number(state.totalEnemiesKilled || state.waveKillsThisWave || 0));
+    const wavesCompleted = Math.max(0, Number(state.wave || 0));
+    const score = (wavesCompleted * 1000) + (enemiesKilled * 25) + (towersPlaced * 5) + Math.round(Number(state.totalDamage || 0));
+    return {
+      name,
+      playerName: name,
+      username: name,
+      wavesCompleted,
+      enemiesKilled,
+      towersPlaced,
+      score,
+      totalDamage: Math.round(Number(state.totalDamage || 0)),
+      livesRemaining: Math.max(0, Number(state.lives || 0)),
+      mapId: state.mapId || "",
+      difficulty: state.difficulty || "",
+      savedAt: new Date().toISOString(),
+    };
+  }
+
+  async function saveGameOverScore() {
+    const entry = buildScoreEntry();
+    const leaderboardState = getLeaderboardState();
+    const dbId = globalScope.localStorage.getItem("tdm_appwrite_realtime_database") || "";
+    const collectionId = globalScope.localStorage.getItem("tdm_appwrite_realtime_collection") || "";
+    const localEntries = getSavedScoreboardEntries();
+    localEntries.unshift(entry);
+    persistSavedScoreboardEntries(localEntries);
+    if (!globalScope.appwriteClient || !globalScope.appwriteApi?.Databases || !dbId || !collectionId) {
+      leaderboardState.rows = [entry, ...leaderboardState.rows].slice(0, 200);
+      renderLeaderboard();
+      return entry;
+    }
+    try {
+      const databases = new globalScope.appwriteApi.Databases(globalScope.appwriteClient);
+      const idFactory = globalScope.appwriteApi.ID;
+      const documentId = idFactory && typeof idFactory.unique === "function"
+        ? idFactory.unique()
+        : `score_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      await databases.createDocument(dbId, collectionId, documentId, entry);
+      await loadLeaderboardDocuments(leaderboardState.metric);
+      return entry;
+    } catch (error) {
+      if (getUi().leaderboardStatus) {
+        getUi().leaderboardStatus.textContent = `Score saved locally: ${error?.message || error}`;
+      }
+      leaderboardState.rows = [entry, ...leaderboardState.rows].slice(0, 200);
+      renderLeaderboard();
+      return entry;
+    }
   }
 
   function openLeaderboardModal() {
@@ -667,6 +739,7 @@
   globalScope.updateLeaderboardUI = updateLeaderboardUI;
   globalScope.subscribeLeaderboardRealtime = subscribeLeaderboardRealtime;
   globalScope.initLeaderboardRealtime = initLeaderboardRealtime;
+  globalScope.saveGameOverScore = saveGameOverScore;
   globalScope.openLeaderboardModal = openLeaderboardModal;
   globalScope.closeLeaderboardModal = closeLeaderboardModal;
   globalScope.syncProfileModal = syncProfileModal;
