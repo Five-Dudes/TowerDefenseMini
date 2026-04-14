@@ -7528,7 +7528,9 @@ function update(dt) {
     state.enemies = [];
     if (!state.gameOverScoreSaved) {
       state.gameOverScoreSaved = true;
-      if (typeof saveGameOverScore === "function") {
+      if (typeof uploadGameStats === "function") {
+        void uploadGameStats(state.totalEnemiesKilled, state.totalTowersPlaced, state.wave);
+      } else if (typeof saveGameOverScore === "function") {
         void saveGameOverScore();
       }
     }

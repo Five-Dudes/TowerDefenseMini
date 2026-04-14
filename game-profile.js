@@ -395,15 +395,15 @@
     globalScope.localStorage.setItem("tdm_saved_scores", JSON.stringify(entries.slice(0, 100)));
   }
 
-  function buildScoreEntry() {
+  function buildScoreEntry(enemiesKilledOverride, towersPlacedOverride, wavesCompletedOverride) {
     const state = getState();
     const profileState = getProfileState();
     const loginState = getLoginState();
     const name = profileState.name || loginState.email || "Player";
     const email = String(loginState.email || "").trim();
-    const towersPlaced = Math.max(0, Number(state.totalTowersPlaced || state.towers?.length || 0));
-    const enemiesKilled = Math.max(0, Number(state.totalEnemiesKilled || state.waveKillsThisWave || 0));
-    const wavesCompleted = Math.max(0, Number(state.wave || 0));
+    const towersPlaced = Math.max(0, Number(Number.isFinite(towersPlacedOverride) ? towersPlacedOverride : (state.totalTowersPlaced || state.towers?.length || 0)));
+    const enemiesKilled = Math.max(0, Number(Number.isFinite(enemiesKilledOverride) ? enemiesKilledOverride : (state.totalEnemiesKilled || state.waveKillsThisWave || 0)));
+    const wavesCompleted = Math.max(0, Number(Number.isFinite(wavesCompletedOverride) ? wavesCompletedOverride : (state.wave || 0)));
     const score = (wavesCompleted * 1000) + (enemiesKilled * 25) + (towersPlaced * 5) + Math.round(Number(state.totalDamage || 0));
     return {
       name,
@@ -424,8 +424,8 @@
     };
   }
 
-  async function saveGameOverScore() {
-    const entry = buildScoreEntry();
+  async function uploadGameStats(enemiesKilled, towersPlaced, currentWave) {
+    const entry = buildScoreEntry(enemiesKilled, towersPlaced, currentWave);
     const leaderboardState = getLeaderboardState();
     const dbId = globalScope.localStorage.getItem("tdm_appwrite_realtime_database") || "";
     const collectionId = globalScope.localStorage.getItem("tdm_appwrite_realtime_collection") || "";
@@ -454,6 +454,11 @@
       renderLeaderboard();
       return entry;
     }
+  }
+
+  async function saveGameOverScore() {
+    const state = getState();
+    return uploadGameStats(state.totalEnemiesKilled, state.totalTowersPlaced, state.wave);
   }
 
   function openLeaderboardModal() {
@@ -767,6 +772,7 @@
   globalScope.updateLeaderboardUI = updateLeaderboardUI;
   globalScope.subscribeLeaderboardRealtime = subscribeLeaderboardRealtime;
   globalScope.initLeaderboardRealtime = initLeaderboardRealtime;
+  globalScope.uploadGameStats = uploadGameStats;
   globalScope.saveGameOverScore = saveGameOverScore;
   globalScope.openLeaderboardModal = openLeaderboardModal;
   globalScope.closeLeaderboardModal = closeLeaderboardModal;
