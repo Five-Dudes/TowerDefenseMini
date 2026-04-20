@@ -566,9 +566,10 @@ const voxelView = {
   tileWidth: 18,
   tileHeight: 9,
   heightScale: 9,
-  defaultZoom: 0.72,
-  minZoom: 0.5,
-  maxZoom: 1.1,
+  defaultZoom: 0.036,
+  minZoom: 0.02,
+  maxZoom: 0.08,
+  floorPattern: null,
 };
 
 function getSpawnPoint() {
@@ -611,6 +612,31 @@ function getVoxelCamera() {
 
 function clampCameraZoom(value) {
   return Math.max(voxelView.minZoom, Math.min(voxelView.maxZoom, value));
+}
+
+function getVoxelFloorPattern() {
+  if (voxelView.floorPattern) {
+    return voxelView.floorPattern;
+  }
+  const tileCanvas = document.createElement("canvas");
+  tileCanvas.width = grid.size * 2;
+  tileCanvas.height = grid.size * 2;
+  const tileCtx = tileCanvas.getContext("2d");
+  if (!tileCtx) return null;
+  tileCtx.fillStyle = "#0f172a";
+  tileCtx.fillRect(0, 0, tileCanvas.width, tileCanvas.height);
+  tileCtx.fillStyle = "rgba(30, 41, 59, 0.92)";
+  tileCtx.fillRect(0, 0, grid.size, grid.size);
+  tileCtx.fillStyle = "rgba(15, 23, 42, 0.9)";
+  tileCtx.fillRect(grid.size, 0, grid.size, grid.size);
+  tileCtx.fillRect(0, grid.size, grid.size, grid.size);
+  tileCtx.fillStyle = "rgba(51, 65, 85, 0.9)";
+  tileCtx.fillRect(grid.size, grid.size, grid.size, grid.size);
+  tileCtx.strokeStyle = "rgba(148, 163, 184, 0.12)";
+  tileCtx.lineWidth = 2;
+  tileCtx.strokeRect(1, 1, tileCanvas.width - 2, tileCanvas.height - 2);
+  voxelView.floorPattern = ctx.createPattern(tileCanvas, "repeat");
+  return voxelView.floorPattern;
 }
 
 function projectVoxelPoint(x, y, lift = 0) {
@@ -755,7 +781,7 @@ function updateCamera(dt) {
   const cos = Math.cos(yaw);
   const moveX = (forwardAxis * sin) + (rightAxis * cos);
   const moveY = (forwardAxis * cos) - (rightAxis * sin);
-  const targetSpeed = (state.gameStarted ? 260 : 180) * (state.paused ? 0.35 : 1) * (camera.zoom || voxelView.defaultZoom);
+  const targetSpeed = (state.gameStarted ? 260 : 180) * (state.paused ? 0.35 : 1);
   camera.vx = camera.vx || 0;
   camera.vy = camera.vy || 0;
   camera.vx += (moveX * targetSpeed - camera.vx) * Math.min(1, dt * 10);
@@ -3444,6 +3470,7 @@ function fireProjectile(tower, enemy, stats) {
   const sourceType = tower.type;
   const supportEffects = getSupportEffectsForSource(tower, { sourceType });
   const muzzle = getTowerMuzzlePoint(tower, stats);
+  const targetPos = getEnemyPosition(enemy);
   let poisonDps = (data.poisonDps || 0) + (tower.level - 1) * 1.5;
   let poisonDuration = data.poisonDuration ? data.poisonDuration + (tower.level - 1) * 0.2 : 0;
   let embrittlementPercent = sourceType === "dart"
@@ -3465,18 +3492,30 @@ function fireProjectile(tower, enemy, stats) {
     return;
   }
 
+  if (sourceType !== "laser") {
+    spawnVisualTrail(
+      muzzle.x,
+      muzzle.y,
+      targetPos.x,
+      targetPos.y,
+      sourceType === "flame" ? "rgba(251, 146, 60, 0.9)" : "rgba(248, 250, 252, 0.75)",
+      sourceType === "flame" ? 8 : 2.5,
+      sourceType === "flame" ? 0.09 : 0.05,
+    );
+  }
+
   if (sourceType === "drone") {
     const bulletSpeed = stats.projectileSpeed || data.projectileSpeed || 340;
     const guns = Math.max(1, stats.droneGuns || 1);
     const miniCount = stats.droneMiniCount || 0;
     const meleeRange = stats.droneMeleeRange || data.droneMeleeRange || 18;
-    const targetPos = getEnemyPosition(enemy);
     const meleeOnly = (tower.upgradePath || 1) === 1 && guns === 1 && miniCount === 0 && !(stats.droneMissiles > 0);
     const meleeDist = Math.hypot(targetPos.x - muzzle.x, targetPos.y - muzzle.y);
     if (meleeOnly && meleeDist <= meleeRange) {
       applyDamage(enemy, damage);
       applySupportEffectsToEnemy(enemy, tower, { sourceType });
       playAttackImpactSound();
+      spawnImpactFlash(targetPos.x, targetPos.y, "rgba(248, 250, 252, 0.8)", 7, 0.1);
       if (stats.fireDps > 0 && stats.fireDuration > 0 && !enemy.darkMatter && !enemy.immuneHeat) {
         enemy.burnTimer = Math.max(enemy.burnTimer || 0, stats.fireDuration);
         enemy.burnDps = Math.max(enemy.burnDps || 0, stats.fireDps);
@@ -3574,6 +3613,7 @@ function fireProjectile(tower, enemy, stats) {
         applySupportEffectsToEnemy(enemy, tower, { sourceType });
         playAttackImpactSound();
         enemy.revealed = true;
+        spawnImpactFlash(targetPos.x, targetPos.y, "rgba(248, 250, 252, 0.8)", 6, 0.08);
       }
       const dx = enemy.x - muzzle.x;
       const dy = enemy.y - muzzle.y;
@@ -3754,6 +3794,7 @@ function fireFlameCone(tower, enemy, stats) {
   const spreadRadius = 50;
   const igniteRadius = stats.flameRadius || 0;
   const now = performance.now() / 1000;
+  spawnVisualTrail(originX, originY, targetPos.x, targetPos.y, "rgba(251, 146, 60, 0.9)", 10, 0.11);
   function igniteTarget(target, depth = 0) {
     if (target.hp <= 0) return;
     if (!target.immuneHeat) {
@@ -3837,6 +3878,7 @@ function fireFlameCone(tower, enemy, stats) {
     const ey = originY + Math.sin(emberAngle) * dist;
     spawnNukeEmbers(ex, ey, 1);
   }
+  spawnImpactFlash(targetPos.x, targetPos.y, "rgba(251, 146, 60, 0.85)", 10, 0.12);
 }
 
 function updateProjectiles(dt) {
@@ -4023,6 +4065,13 @@ function updateProjectiles(dt) {
       if (dist <= step) {
         applyDamage(proj.target, proj.damage);
         applySupportEffectsToEnemy(proj.target, proj.owner, { sourceType: proj.sourceType });
+        spawnImpactFlash(
+          targetPos.x,
+          targetPos.y,
+          proj.sourceType === "flame" ? "rgba(251, 146, 60, 0.85)" : "rgba(250, 204, 21, 0.8)",
+          proj.sourceType === "drone" ? 9 : 7,
+          0.1,
+        );
         return false;
       }
       proj.x += (dx / dist) * step;
@@ -4119,6 +4168,13 @@ function updateProjectiles(dt) {
       if (proj.target.hp <= 0) {
         handleEnemyDeath(proj.target);
       }
+      spawnImpactFlash(
+        targetPos.x,
+        targetPos.y,
+        proj.sourceType === "flame" ? "rgba(251, 146, 60, 0.85)" : "rgba(250, 204, 21, 0.8)",
+        proj.sourceType === "drone" ? 9 : 7,
+        0.1,
+      );
       return false;
     }
     proj.x += (dx / dist) * step;
@@ -6414,10 +6470,6 @@ function drawGrid() {
   if (state.view3D) {
     const camera = getVoxelCamera();
     const zoom = camera.zoom || voxelView.defaultZoom;
-    const cols = Math.ceil(canvas.width / (voxelView.tileWidth * zoom)) + 8;
-    const rows = Math.ceil(canvas.height / (voxelView.tileHeight * zoom)) + 8;
-    const centerCx = Math.floor(camera.x / grid.size);
-    const centerCy = Math.floor(camera.y / grid.size);
     const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
     sky.addColorStop(0, "#08111f");
     sky.addColorStop(0.55, "#0d1527");
@@ -6431,16 +6483,22 @@ function drawGrid() {
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-    ctx.lineWidth = 1;
-    for (let cy = centerCy + rows; cy >= centerCy - rows; cy -= 1) {
-      for (let cx = centerCx - cols; cx <= centerCx + cols; cx += 1) {
-        const x = cx * grid.size + grid.size / 2;
-        const y = cy * grid.size + grid.size / 2;
-        const parity = (cx + cy) % 2 === 0;
-        const fill = parity ? "rgba(15, 23, 42, 0.86)" : "rgba(30, 41, 59, 0.88)";
-        const stroke = parity ? "rgba(56, 189, 248, 0.08)" : "rgba(148, 163, 184, 0.05)";
-        drawVoxelTile(x, y, grid.size, fill, stroke, 0);
-      }
+    const cos = Math.cos(camera.yaw || 0);
+    const sin = Math.sin(camera.yaw || 0);
+    const tileWidth = voxelView.tileWidth * zoom;
+    const tileHeight = voxelView.tileHeight * zoom;
+    const a = cos * tileWidth;
+    const b = sin * tileHeight;
+    const c = -sin * tileWidth;
+    const d = cos * tileHeight;
+    const e = canvas.width * 0.5 - camera.x * a - camera.y * c;
+    const f = canvas.height * voxelView.centerYRatio - camera.x * b - camera.y * d;
+    ctx.setTransform(a, b, c, d, e, f);
+    const pattern = getVoxelFloorPattern();
+    if (pattern) {
+      ctx.fillStyle = pattern;
+      const worldSpan = Math.max(canvas.width, canvas.height) / Math.max(0.001, zoom) + grid.size * 20;
+      ctx.fillRect(camera.x - worldSpan, camera.y - worldSpan, worldSpan * 2, worldSpan * 2);
     }
     ctx.restore();
     return;
@@ -7640,6 +7698,12 @@ function drawProjectiles() {
       ctx.save();
       ctx.translate(proj.x, proj.y);
       ctx.rotate(angle);
+      ctx.strokeStyle = proj.sourceType === "flame" ? "rgba(251, 146, 60, 0.85)" : "rgba(248, 250, 252, 0.7)";
+      ctx.lineWidth = proj.sourceType === "flame" ? 4 : 2;
+      ctx.beginPath();
+      ctx.moveTo(-10, 0);
+      ctx.lineTo(6, 0);
+      ctx.stroke();
       if (proj.sourceType === "dart") {
         ctx.fillStyle = "#f8fafc";
         ctx.beginPath();
@@ -7671,7 +7735,7 @@ function drawProjectiles() {
       } else {
         ctx.fillStyle = proj.slow > 0 ? "#38bdf8" : "#facc15";
         ctx.beginPath();
-        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.arc(0, 0, proj.sourceType === "drone" ? 5 : 4, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -7687,12 +7751,15 @@ function drawProjectiles() {
 function drawExplosions() {
   for (const explosion of state.explosions) {
     const alpha = Math.min(1, explosion.ttl * 3);
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = explosion.shockwave ? 6 : 4;
+    ctx.strokeStyle = explosion.color || "#ffffff";
+    ctx.lineWidth = explosion.lineWidth || (explosion.shockwave ? 6 : 4);
     ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.arc(explosion.x, explosion.y, explosion.radius * (1 - explosion.ttl * 0.6), 0, Math.PI * 2);
     ctx.stroke();
+    ctx.globalAlpha = alpha * 0.35;
+    ctx.fillStyle = explosion.color || "rgba(255, 255, 255, 0.3)";
+    ctx.fill();
     ctx.globalAlpha = 1;
   }
 }
@@ -7813,6 +7880,29 @@ function drawBeams() {
   }
 }
 
+function spawnVisualTrail(x1, y1, x2, y2, color, width, ttl = 0.08) {
+  state.beams.push({
+    x1,
+    y1,
+    x2,
+    y2,
+    color,
+    width,
+    ttl,
+  });
+}
+
+function spawnImpactFlash(x, y, color, radius = 8, ttl = 0.12) {
+  state.explosions.push({
+    x,
+    y,
+    radius,
+    ttl,
+    color,
+    lineWidth: 2,
+  });
+}
+
 function drawPlacementPreview() {
   if (!state.placing) return;
   const x = state.mouse.x;
@@ -7893,8 +7983,8 @@ function draw() {
   drawBackground();
   drawTraps();
   drawMines();
-  drawProjectiles();
   drawTowers();
+  drawProjectiles();
   drawEnemies();
   drawExplosions();
   drawNukeParticles();
