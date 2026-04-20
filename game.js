@@ -194,6 +194,7 @@ const ui = {
   jasperModal: document.getElementById("jasper-modal"),
   openJasper: document.getElementById("open-jasper"),
   toggle3D: document.getElementById("toggle-3d"),
+  teleportSpawn: document.getElementById("teleport-spawn"),
   closeJasper: document.getElementById("close-jasper"),
   damageFlash: document.getElementById("damage-flash"),
   playArea: document.getElementById("play-area"),
@@ -401,7 +402,10 @@ const state = {
   camera: {
     x: 420,
     y: 96,
-    bob: 0,
+    yaw: Math.PI / 4,
+    zoom: 1,
+    vx: 0,
+    vy: 0,
   },
   moveKeys: new Set(),
   mapId: "rift",
@@ -557,6 +561,128 @@ const legacyView = {
   swayAmplitude: 0.004,
 };
 
+const voxelView = {
+  centerYRatio: 0.48,
+  tileWidth: 22,
+  tileHeight: 11,
+  heightScale: 9,
+  defaultZoom: 1,
+  minZoom: 0.72,
+  maxZoom: 1.45,
+};
+
+function getSpawnPoint() {
+  const firstPath = state.mapPaths[0] || [];
+  if (firstPath[0]) {
+    return { x: firstPath[0].x, y: firstPath[0].y };
+  }
+  if (state.mapStartCells && state.mapStartCells[0]) {
+    return cellToWorld(state.mapStartCells[0].cx, state.mapStartCells[0].cy);
+  }
+  return { x: canvas.width / 2, y: canvas.height / 2 };
+}
+
+function createVoxelCamera() {
+  const spawn = getSpawnPoint();
+  return {
+    x: spawn.x,
+    y: spawn.y,
+    yaw: Math.PI / 4,
+    zoom: voxelView.defaultZoom,
+    orbiting: false,
+    orbitStartX: 0,
+    orbitStartY: 0,
+    orbitStartYaw: 0,
+  };
+}
+
+function getVoxelCamera() {
+  if (!state.camera) {
+    state.camera = createVoxelCamera();
+  }
+  if (!Number.isFinite(state.camera.zoom)) {
+    state.camera.zoom = voxelView.defaultZoom;
+  }
+  if (!Number.isFinite(state.camera.yaw)) {
+    state.camera.yaw = Math.PI / 4;
+  }
+  return state.camera;
+}
+
+function clampCameraZoom(value) {
+  return Math.max(voxelView.minZoom, Math.min(voxelView.maxZoom, value));
+}
+
+function projectVoxelPoint(x, y, lift = 0) {
+  const camera = getVoxelCamera();
+  const yaw = camera.yaw || 0;
+  const zoom = camera.zoom || voxelView.defaultZoom;
+  const dx = x - camera.x;
+  const dy = y - camera.y;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  const right = dx * cos - dy * sin;
+  const forward = dx * sin + dy * cos;
+  const screenX = canvas.width * 0.5 + right * voxelView.tileWidth * zoom;
+  const screenY = canvas.height * voxelView.centerYRatio + forward * voxelView.tileHeight * zoom - lift * voxelView.heightScale * zoom;
+  const scale = zoom;
+  return {
+    x: screenX,
+    y: screenY,
+    scale,
+    depth: forward,
+  };
+}
+
+function drawPolygon(points, fillStyle, strokeStyle, lineWidth = 1) {
+  if (!points || points.length === 0) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i += 1) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.closePath();
+  if (fillStyle) {
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+  }
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+}
+
+function drawVoxelPrism(x, y, size, height, colors = {}) {
+  const half = size / 2;
+  const corners = [
+    { x: x - half, y: y - half },
+    { x: x + half, y: y - half },
+    { x: x + half, y: y + half },
+    { x: x - half, y: y + half },
+  ];
+  const top = corners.map((corner) => projectVoxelPoint(corner.x, corner.y, height));
+  const base = corners.map((corner) => projectVoxelPoint(corner.x, corner.y, 0));
+  const topColor = colors.top || colors.fill || "#94a3b8";
+  const leftColor = colors.left || shadeColor(topColor, 0.72);
+  const rightColor = colors.right || shadeColor(topColor, 0.52);
+  const edgeColor = colors.edge || shadeColor(topColor, 0.28);
+  drawPolygon([base[0], base[1], top[1], top[0]], leftColor, edgeColor, 1);
+  drawPolygon([base[1], base[2], top[2], top[1]], rightColor, edgeColor, 1);
+  drawPolygon(top, topColor, edgeColor, 1.25);
+}
+
+function drawVoxelTile(x, y, size, fillStyle, strokeStyle, height = 0) {
+  const half = size / 2;
+  const corners = [
+    projectVoxelPoint(x - half, y - half, height),
+    projectVoxelPoint(x + half, y - half, height),
+    projectVoxelPoint(x + half, y + half, height),
+    projectVoxelPoint(x - half, y + half, height),
+  ];
+  drawPolygon(corners, fillStyle, strokeStyle, 1);
+}
+
 function cellKey(cx, cy) {
   return `${cx},${cy}`;
 }
@@ -589,21 +715,7 @@ function getFirstPersonProjection(x, y, lift = 0) {
       depth: easedDepth,
     };
   }
-  const camera = state.camera || { x: canvas.width / 2, y: canvas.height * 0.18, bob: 0 };
-  const dx = x - camera.x;
-  const dy = y - camera.y;
-  const depthRaw = Math.max(0, Math.min(1, (dy + firstPersonView.depthRange * 0.12) / firstPersonView.depthRange));
-  const easedDepth = depthRaw * depthRaw * (3 - 2 * depthRaw);
-  const horizonY = canvas.height * firstPersonView.horizonRatio;
-  const groundHeight = canvas.height - horizonY;
-  const scale = firstPersonView.baseScale + easedDepth * firstPersonView.scaleRange;
-  const sway = Math.sin(performance.now() * 0.00035 + camera.bob * 0.08) * canvas.width * firstPersonView.swayAmplitude;
-  return {
-    x: canvas.width / 2 + dx * scale + sway * (1 - easedDepth),
-    y: horizonY + groundHeight * Math.pow(easedDepth, firstPersonView.depthExponent) - lift * (0.35 + easedDepth * 0.8),
-    scale,
-    depth: easedDepth,
-  };
+  return projectVoxelPoint(x, y, lift);
 }
 
 function projectPoint(x, y, lift = 0) {
@@ -617,55 +729,41 @@ function screenToWorld(screenX, screenY) {
       y: screenY,
     };
   }
-  const camera = state.camera || { x: canvas.width / 2, y: canvas.height * 0.18, bob: 0 };
-  const horizonY = canvas.height * firstPersonView.horizonRatio;
-  const groundHeight = canvas.height - horizonY;
-  const depthRatio = Math.max(0, Math.min(1, (screenY - horizonY) / groundHeight));
-  let low = 0;
-  let high = 1;
-  let easedDepth = depthRatio;
-  for (let i = 0; i < 10; i += 1) {
-    const mid = (low + high) / 2;
-    const projected = Math.pow(mid, firstPersonView.depthExponent);
-    if (projected < depthRatio) {
-      low = mid;
-    } else {
-      high = mid;
-    }
-    easedDepth = mid;
-  }
-  const scale = firstPersonView.baseScale + easedDepth * firstPersonView.scaleRange;
-  const sway = Math.sin(performance.now() * 0.00035 + camera.bob * 0.08) * canvas.width * firstPersonView.swayAmplitude;
+  const camera = getVoxelCamera();
+  const zoom = camera.zoom || voxelView.defaultZoom;
+  const cos = Math.cos(camera.yaw || 0);
+  const sin = Math.sin(camera.yaw || 0);
+  const right = (screenX - canvas.width * 0.5) / Math.max(0.001, voxelView.tileWidth * zoom);
+  const forward = (screenY - canvas.height * voxelView.centerYRatio) / Math.max(0.001, voxelView.tileHeight * zoom);
   return {
-    x: camera.x + (screenX - canvas.width / 2 - sway * (1 - easedDepth)) / Math.max(0.001, scale),
-    y: camera.y + Math.max(0, easedDepth * firstPersonView.depthRange - firstPersonView.depthRange * 0.12),
+    x: camera.x + right * cos + forward * sin,
+    y: camera.y - right * sin + forward * cos,
   };
 }
 
 function updateCamera(dt) {
   if (!state.view3D) return;
-  const camera = state.camera || (state.camera = { x: canvas.width / 2, y: canvas.height * 0.18, bob: 0 });
-  const forward = state.moveKeys.has("KeyS") || state.moveKeys.has("ArrowDown") ? 1 : 0;
-  const backward = state.moveKeys.has("KeyW") || state.moveKeys.has("ArrowUp") ? 1 : 0;
+  const camera = getVoxelCamera();
+  const forward = state.moveKeys.has("KeyW") || state.moveKeys.has("ArrowUp") ? 1 : 0;
+  const backward = state.moveKeys.has("KeyS") || state.moveKeys.has("ArrowDown") ? 1 : 0;
   const left = state.moveKeys.has("KeyA") || state.moveKeys.has("ArrowLeft") ? 1 : 0;
   const right = state.moveKeys.has("KeyD") || state.moveKeys.has("ArrowRight") ? 1 : 0;
-  let moveX = right - left;
-  let moveY = forward - backward;
-  const magnitude = Math.hypot(moveX, moveY);
-  if (magnitude > 0) {
-    moveX /= magnitude;
-    moveY /= magnitude;
-  }
-  const speed = (state.gameStarted ? 210 : 150) * (state.paused ? 0.25 : 1);
-  camera.x += moveX * speed * dt;
-  camera.y += moveY * speed * dt;
-  const minX = -grid.size;
-  const maxX = canvas.width + grid.size;
-  const minY = -grid.size;
-  const maxY = canvas.height + grid.size;
-  camera.x = Math.max(minX, Math.min(maxX, camera.x));
-  camera.y = Math.max(minY, Math.min(maxY, camera.y));
-  camera.bob = magnitude > 0 ? camera.bob + dt * (4.5 + speed / 220) : camera.bob * 0.9;
+  const forwardAxis = forward - backward;
+  const rightAxis = right - left;
+  const yaw = camera.yaw || 0;
+  const sin = Math.sin(yaw);
+  const cos = Math.cos(yaw);
+  const moveX = (forwardAxis * sin) + (rightAxis * cos);
+  const moveY = (forwardAxis * cos) - (rightAxis * sin);
+  const targetSpeed = (state.gameStarted ? 260 : 180) * (state.paused ? 0.35 : 1) * (camera.zoom || voxelView.defaultZoom);
+  camera.vx = camera.vx || 0;
+  camera.vy = camera.vy || 0;
+  camera.vx += (moveX * targetSpeed - camera.vx) * Math.min(1, dt * 10);
+  camera.vy += (moveY * targetSpeed - camera.vy) * Math.min(1, dt * 10);
+  camera.x += camera.vx * dt;
+  camera.y += camera.vy * dt;
+  camera.vx *= Math.pow(0.12, dt);
+  camera.vy *= Math.pow(0.12, dt);
 }
 
 function isWallAdjacentToPath(x, y) {
@@ -960,6 +1058,9 @@ function updateHud() {
   }
   if (ui.toggle3D) {
     ui.toggle3D.textContent = `3D: ${state.view3D ? "On" : "Off"}`;
+  }
+  if (ui.teleportSpawn) {
+    ui.teleportSpawn.disabled = !state.view3D;
   }
   if (ui.jasperInfiniteFunds) {
     ui.jasperInfiniteFunds.textContent = `Infinite Funds: ${state.infiniteGold ? "On" : "Off"}`;
@@ -6102,6 +6203,15 @@ function drawPath() {
   const midColor = lerpColor([9, 20, 36], [54, 9, 80], lossRatio);
   const innerColor = lerpColor([24, 74, 110], [120, 40, 150], lossRatio);
   const time = performance.now();
+  if (state.view3D) {
+    for (const points of paths) {
+      if (!points || points.length < 2) continue;
+      for (const point of points) {
+        drawVoxelTile(point.x, point.y, grid.size * 0.96, innerColor, midColor, 4);
+      }
+    }
+    return;
+  }
   for (const points of paths) {
     if (!points || points.length < 2) continue;
     ctx.save();
@@ -6151,6 +6261,24 @@ function drawPath() {
 }
 
 function drawPortalAt(origin, t) {
+  if (state.view3D) {
+    const pulse = 0.5 + Math.sin(t * 0.004) * 0.5;
+    const height = 12 + pulse * 4;
+    drawVoxelPrism(origin.x, origin.y, grid.size * 0.8, height, {
+      top: "rgba(147, 51, 234, 0.95)",
+      left: "rgba(91, 33, 182, 0.92)",
+      right: "rgba(76, 29, 149, 0.92)",
+      edge: "rgba(233, 213, 255, 0.32)",
+    });
+    ctx.save();
+    const view = projectVoxelPoint(origin.x, origin.y, height + 8);
+    ctx.fillStyle = "rgba(233, 213, 255, 0.2)";
+    ctx.beginPath();
+    ctx.arc(view.x, view.y, 14 + pulse * 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
   const view = projectPoint(origin.x, origin.y);
   const pulse = 0.5 + Math.sin(t * 0.004) * 0.5;
   const outer = 26 + pulse * 6;
@@ -6226,6 +6354,27 @@ function getCastlePoint() {
 
 function drawCastle() {
   const target = getCastlePoint();
+  if (state.view3D) {
+    drawVoxelPrism(target.x, target.y, grid.size * 1.15, 18, {
+      top: "rgba(15, 23, 42, 0.96)",
+      left: "rgba(30, 41, 59, 0.96)",
+      right: "rgba(51, 65, 85, 0.96)",
+      edge: "rgba(226, 232, 240, 0.24)",
+    });
+    drawVoxelPrism(target.x - grid.size * 0.22, target.y - grid.size * 0.18, grid.size * 0.28, 18, {
+      top: "rgba(250, 204, 21, 0.9)",
+      left: "rgba(202, 138, 4, 0.9)",
+      right: "rgba(180, 83, 9, 0.9)",
+      edge: "rgba(254, 249, 195, 0.4)",
+    });
+    drawVoxelPrism(target.x + grid.size * 0.22, target.y - grid.size * 0.18, grid.size * 0.28, 18, {
+      top: "rgba(250, 204, 21, 0.9)",
+      left: "rgba(202, 138, 4, 0.9)",
+      right: "rgba(180, 83, 9, 0.9)",
+      edge: "rgba(254, 249, 195, 0.4)",
+    });
+    return;
+  }
   const view = projectPoint(target.x, target.y);
   ctx.save();
   ctx.translate(view.x, view.y);
@@ -6262,6 +6411,40 @@ function drawCastle() {
 }
 
 function drawGrid() {
+  if (state.view3D) {
+    const camera = getVoxelCamera();
+    const zoom = camera.zoom || voxelView.defaultZoom;
+    const cols = Math.ceil(canvas.width / (voxelView.tileWidth * zoom)) + 8;
+    const rows = Math.ceil(canvas.height / (voxelView.tileHeight * zoom)) + 8;
+    const centerCx = Math.floor(camera.x / grid.size);
+    const centerCy = Math.floor(camera.y / grid.size);
+    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    sky.addColorStop(0, "#08111f");
+    sky.addColorStop(0.55, "#0d1527");
+    sky.addColorStop(1, "#050a12");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const glow = ctx.createRadialGradient(canvas.width / 2, canvas.height * 0.42, 24, canvas.width / 2, canvas.height * 0.42, canvas.width * 0.8);
+    glow.addColorStop(0, "rgba(56, 189, 248, 0.12)");
+    glow.addColorStop(0.35, "rgba(99, 102, 241, 0.06)");
+    glow.addColorStop(1, "rgba(2, 6, 18, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (let cy = centerCy + rows; cy >= centerCy - rows; cy -= 1) {
+      for (let cx = centerCx - cols; cx <= centerCx + cols; cx += 1) {
+        const x = cx * grid.size + grid.size / 2;
+        const y = cy * grid.size + grid.size / 2;
+        const parity = (cx + cy) % 2 === 0;
+        const fill = parity ? "rgba(15, 23, 42, 0.86)" : "rgba(30, 41, 59, 0.88)";
+        const stroke = parity ? "rgba(56, 189, 248, 0.08)" : "rgba(148, 163, 184, 0.05)";
+        drawVoxelTile(x, y, grid.size, fill, stroke, 0);
+      }
+    }
+    ctx.restore();
+    return;
+  }
   const horizonY = canvas.height * firstPersonView.horizonRatio;
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
   gradient.addColorStop(0, "rgba(4, 6, 18, 0.9)");
@@ -6496,6 +6679,30 @@ function drawMines() {
     const supportEffects = tower.type === "floorSpike" ? getSupportEffectsForSource(tower, { sourceType: "floorSpike" }) : null;
     const spawnAlpha = tower.spawnInTimer > 0 ? 1 - tower.spawnInTimer / 0.18 : 1;
     const spawnScale = tower.spawnInTimer > 0 ? 0.82 + spawnAlpha * 0.18 : 1;
+    if (state.view3D) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.35, spawnAlpha);
+      if (data.isMine) {
+        drawVoxelPrism(tower.x, tower.y, grid.size * 0.32, 6, {
+          top: data.color || "#a3e635",
+          left: shadeColor(data.color || "#a3e635", 0.7),
+          right: shadeColor(data.color || "#a3e635", 0.5),
+          edge: shadeColor(data.color || "#a3e635", 0.25),
+        });
+      } else {
+        const base = data.color || "#f97316";
+        const pulse = tower.spikeProgress || 0;
+        const heated = Boolean((supportEffects && supportEffects.burnDps > 0) || tower.isFiery);
+        drawVoxelPrism(tower.x, tower.y, grid.size * 0.34, 6 + pulse * 10, {
+          top: shadeColor(heated ? "#fb7185" : base, 0.95),
+          left: shadeColor(heated ? "#fb7185" : base, 0.72),
+          right: shadeColor(heated ? "#fb7185" : base, 0.55),
+          edge: shadeColor(heated ? "#fb7185" : base, 0.25),
+        });
+      }
+      ctx.restore();
+      continue;
+    }
     const view = projectPoint(tower.x, tower.y);
     ctx.save();
     ctx.translate(view.x, view.y);
@@ -6608,6 +6815,39 @@ function drawTowers() {
     const supportEffects = getSupportEffectsForSource(tower, { sourceType: tower.type });
     const spawnAlpha = tower.spawnInTimer > 0 ? 1 - tower.spawnInTimer / 0.18 : 1;
     const spawnScale = tower.spawnInTimer > 0 ? 0.82 + spawnAlpha * 0.18 : 1;
+    if (state.view3D) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.35, spawnAlpha);
+      const baseColor = tower.disabled ? "#64748b" : (data.color || "#e2e8f0");
+      const size = tower.type === "wall" ? grid.size * 0.92 : tower.type === "op" ? grid.size * 0.98 : tower.type === "factory" ? grid.size * 0.78 : tower.type === "drone" ? (tower.isMini ? grid.size * 0.36 : grid.size * 0.66) : grid.size * 0.7;
+      const height = tower.type === "wall" ? 14 : tower.type === "op" ? 24 : tower.type === "factory" ? 18 : tower.type === "drone" ? (tower.isMini ? 8 : 16) : tower.type === "spikeTower" ? 12 : tower.type === "laser" ? 20 : 14;
+      drawVoxelPrism(tower.x, tower.y, size, height + (tower.level || 1) * 1.5, {
+        top: baseColor,
+        left: shadeColor(baseColor, 0.74),
+        right: shadeColor(baseColor, 0.52),
+        edge: shadeColor(baseColor, 0.22),
+      });
+      if (tower.type === "drone") {
+        drawVoxelPrism(tower.x, tower.y, size * 0.45, 26, {
+          top: shadeColor(baseColor, 1.08),
+          left: shadeColor(baseColor, 0.9),
+          right: shadeColor(baseColor, 0.75),
+          edge: shadeColor(baseColor, 0.3),
+        });
+      }
+      if (tower === state.selectedTower) {
+        ctx.save();
+        const ring = projectVoxelPoint(tower.x, tower.y, height + 4);
+        ctx.strokeStyle = "rgba(251, 191, 36, 0.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(ring.x, ring.y + 6, grid.size * 0.42 * (ring.scale || 1), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+      continue;
+    }
     const view = projectPoint(tower.x, tower.y);
     ctx.save();
     ctx.translate(view.x, view.y);
@@ -6842,6 +7082,16 @@ function drawTowers() {
 
 function drawTraps() {
   for (const trap of state.traps) {
+    if (state.view3D) {
+      const color = trap.turret ? "#facc15" : trap.explode ? "#ef4444" : "#eab308";
+      drawVoxelPrism(trap.x, trap.y, grid.size * 0.28, trap.turret ? 12 : 8, {
+        top: color,
+        left: shadeColor(color, 0.74),
+        right: shadeColor(color, 0.54),
+        edge: shadeColor(color, 0.22),
+      });
+      continue;
+    }
     const view = projectPoint(trap.x, trap.y);
     ctx.save();
     ctx.translate(view.x, view.y);
@@ -6879,6 +7129,51 @@ function drawTraps() {
 
 function drawEnemies() {
   if (state.nukeSmoke) {
+    return;
+  }
+  if (state.view3D) {
+    for (const enemy of state.enemies) {
+      const pos = getEnemyPosition(enemy);
+      const tierScale = 1 + (enemy.tier - 1) * 0.12;
+      const size = enemy.type === "swarmlet" ? 10 : enemy.type === "heavy" ? 18 : enemy.isBoss ? 24 : 14;
+      const lift = enemy.flyHeight || 0;
+      const color = enemy.type === "speedy" || enemy.type === "boss_fast"
+        ? "#facc15"
+        : enemy.type === "heavy" || enemy.type === "boss_pentagon"
+          ? "#a855f7"
+          : enemy.type === "boss_hexagon"
+            ? "#94a3b8"
+            : enemy.type === "diamond" || enemy.type === "boss_diamond"
+              ? "#e0f2fe"
+              : enemy.type === "labrat"
+                ? "#fbbf24"
+                : enemy.type === "thief"
+                  ? "#f59e0b"
+                  : enemy.type === "troll"
+                    ? "#f472b6"
+                    : enemy.type === "buffer"
+                      ? "#22c55e"
+                      : enemy.type === "saboteur"
+                        ? "#ef4444"
+                        : enemy.type === "chimera"
+                          ? "#c084fc"
+                          : enemy.type === "broodMother"
+                            ? "#ec4899"
+                            : enemy.type === "flying"
+                              ? "#60a5fa"
+          : enemy.type === "aegis"
+            ? "#93c5fd"
+            : "#fb7185";
+      ctx.save();
+      ctx.globalAlpha = enemy.stealth && !enemy.revealed ? 0.45 : 1;
+      drawVoxelPrism(pos.x, pos.y, size * tierScale, 10 + tierScale * 6 + lift, {
+        top: enemy.stealth && !enemy.revealed ? shadeColor(color, 1.1) : color,
+        left: shadeColor(color, 0.76),
+        right: shadeColor(color, 0.56),
+        edge: shadeColor(color, 0.2),
+      });
+      ctx.restore();
+    }
     return;
   }
   function drawSphere(x, y, radius, baseColor) {
@@ -7530,6 +7825,26 @@ function drawPlacementPreview() {
   const invalidWave = Boolean(data.blocksPath && state.waveInProgress && isOnPath(snapped.x, snapped.y));
   const invalidMine = (state.placing === "mine" || state.placing === "floorSpike") && !isOnPath(snapped.x, snapped.y);
   const invalid = invalidPath || invalidMine || invalidWave || invalidSpike;
+  if (state.view3D) {
+    drawVoxelTile(
+      snapped.x,
+      snapped.y,
+      grid.size * 0.95,
+      invalid ? "rgba(239, 68, 68, 0.45)" : "rgba(34, 197, 94, 0.35)",
+      invalid ? "rgba(239, 68, 68, 0.8)" : "rgba(34, 197, 94, 0.7)",
+      2,
+    );
+    const previewRange = data.range || 14;
+    const ring = projectVoxelPoint(snapped.x, snapped.y, 4);
+    ctx.save();
+    ctx.strokeStyle = invalid ? "rgba(239, 68, 68, 0.5)" : "rgba(34, 197, 94, 0.45)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y + 5, previewRange * 0.65 * (ring.scale || 1), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   const view = projectPoint(snapped.x, snapped.y);
   ctx.save();
   ctx.translate(view.x, view.y);
@@ -7589,22 +7904,6 @@ function draw() {
   drawPlacementPreview();
   ctx.restore();
   drawNukeSmokeOverlay();
-  if (state.view3D) {
-    ctx.save();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(canvas.width / 2 - 8, canvas.height / 2);
-    ctx.lineTo(canvas.width / 2 - 2, canvas.height / 2);
-    ctx.moveTo(canvas.width / 2 + 2, canvas.height / 2);
-    ctx.lineTo(canvas.width / 2 + 8, canvas.height / 2);
-    ctx.moveTo(canvas.width / 2, canvas.height / 2 - 8);
-    ctx.lineTo(canvas.width / 2, canvas.height / 2 - 2);
-    ctx.moveTo(canvas.width / 2, canvas.height / 2 + 2);
-    ctx.lineTo(canvas.width / 2, canvas.height / 2 + 8);
-    ctx.stroke();
-    ctx.restore();
-  }
   if (state.selectedTower && state.selectedTower.type !== "wall" && state.selectedTower.type !== "mine") {
     ctx.fillStyle = "#e2e8f0";
     ctx.fillText("Click to upgrade (50)", 18, canvas.height - 20);
@@ -7748,6 +8047,14 @@ canvas.addEventListener("mousemove", (event) => {
   const rect = canvas.getBoundingClientRect();
   const screenX = ((event.clientX - rect.left) / rect.width) * canvas.width;
   const screenY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+  const camera = state.view3D ? getVoxelCamera() : null;
+  if (camera && camera.orbiting) {
+    const dx = screenX - camera.orbitStartX;
+    camera.yaw = camera.orbitStartYaw + dx * 0.006;
+    camera.yaw = ((camera.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    camera.orbitStartX = screenX;
+    camera.orbitStartYaw = camera.yaw;
+  }
   const world = screenToWorld(screenX, screenY);
   state.mouse.x = world.x;
   state.mouse.y = world.y;
@@ -8232,13 +8539,17 @@ if (ui.toggle3D) {
   ui.toggle3D.addEventListener("click", () => {
     state.view3D = !state.view3D;
     localStorage.setItem(VIEW_3D_KEY, state.view3D ? "true" : "false");
-    if (state.view3D && !state.camera) {
-      state.camera = {
-        x: canvas.width * 0.5,
-        y: canvas.height * 0.18,
-        bob: 0,
-      };
+    if (state.view3D) {
+      state.camera = createVoxelCamera();
     }
+    updateHud();
+  });
+}
+
+if (ui.teleportSpawn) {
+  ui.teleportSpawn.addEventListener("click", () => {
+    if (!state.view3D) return;
+    teleportCameraToSpawn();
     updateHud();
   });
 }
@@ -8545,6 +8856,9 @@ const tutorialButton = document.getElementById("tutorial-btn");
 
 const selectMap = (mapId) => {
   setActiveMap(mapId);
+  if (state.view3D) {
+    state.camera = createVoxelCamera();
+  }
   mapButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.map === mapId);
   });
@@ -8562,6 +8876,9 @@ const selectDifficulty = (difficulty) => {
   }
   state.difficulty = difficulty;
   state.gameStarted = true;
+  if (state.view3D) {
+    state.camera = createVoxelCamera();
+  }
   if (difficulty === "hard" && ui.alertModal) {
     ui.alertModal.classList.add("hidden");
   }
@@ -8742,7 +9059,7 @@ function resetGame() {
   state.auraSnapshot = null;
   state.waveSpeed = 1;
   state.towerLevelCap = 5;
-  state.camera = {
+  state.camera = state.view3D ? createVoxelCamera() : {
     x: canvas.width * 0.5,
     y: canvas.height * 0.18,
     bob: 0,
@@ -8774,6 +9091,9 @@ function resetGame() {
   if (ui.loginModal) ui.loginModal.classList.add("hidden");
   if (ui.alertModal) ui.alertModal.classList.add("hidden");
   setActiveMap(state.mapId);
+  if (state.view3D) {
+    state.camera = createVoxelCamera();
+  }
   recomputeGlobalPath();
   updateHud();
   updateEncyclopedia();
@@ -8904,8 +9224,30 @@ function tryUnlockInfiniteGold() {
   return;
 }
 
+function isEditableTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+}
+
+function isBlockingOverlayOpen() {
+  const overlays = [ui.encyclopediaModal, ui.tipsModal, ui.alertModal, ui.loginModal, ui.leaderboardModal, ui.profileModal, ui.tutorialModal, ui.jasperModal, ui.gameOver];
+  return overlays.some((overlay) => overlay && !overlay.classList.contains("hidden"));
+}
+
+function teleportCameraToSpawn() {
+  const camera = getVoxelCamera();
+  const spawn = getSpawnPoint();
+  camera.x = spawn.x;
+  camera.y = spawn.y;
+  camera.yaw = Math.PI / 4;
+  camera.zoom = voxelView.defaultZoom;
+  camera.vx = 0;
+  camera.vy = 0;
+  camera.orbiting = false;
+}
+
 window.addEventListener("keydown", (event) => {
-  if (movementKeyCodes.has(event.code)) {
+  if (movementKeyCodes.has(event.code) && state.view3D && state.gameStarted && !state.paused && !isEditableTarget(event.target) && !isBlockingOverlayOpen()) {
     event.preventDefault();
     state.moveKeys.add(event.code);
   }
@@ -9000,6 +9342,18 @@ canvas.addEventListener("dblclick", () => {
 });
 
 canvas.addEventListener("mousedown", (event) => {
+  if (state.view3D && event.button === 1) {
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const screenX = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const screenY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const camera = getVoxelCamera();
+    camera.orbiting = true;
+    camera.orbitStartX = screenX;
+    camera.orbitStartY = screenY;
+    camera.orbitStartYaw = camera.yaw || 0;
+    return;
+  }
   if (event.button === 0 && state.placing) {
     const rect = canvas.getBoundingClientRect();
     const screenX = ((event.clientX - rect.left) / rect.width) * canvas.width;
@@ -9036,6 +9390,10 @@ canvas.addEventListener("mousedown", (event) => {
 });
 
 canvas.addEventListener("mouseup", () => {
+  const camera = state.view3D ? getVoxelCamera() : null;
+  if (camera) {
+    camera.orbiting = false;
+  }
   if (state.dragPlacing) {
     state.dragPlacing = false;
     state.suppressClick = true;
@@ -9046,6 +9404,15 @@ canvas.addEventListener("mouseup", () => {
     state.draggingDrone = null;
   }
 });
+
+canvas.addEventListener("wheel", (event) => {
+  if (!state.view3D) return;
+  event.preventDefault();
+  const camera = getVoxelCamera();
+  const delta = Math.sign(event.deltaY) * 0.08;
+  camera.zoom = clampCameraZoom((camera.zoom || voxelView.defaultZoom) - delta);
+  updateHud();
+}, { passive: false });
 
 canvas.addEventListener("contextmenu", (event) => {
   event.preventDefault();
@@ -9067,6 +9434,7 @@ canvas.addEventListener("contextmenu", (event) => {
 canvas.addEventListener("auxclick", (event) => {
   if (event.button !== 1) return;
   if (!state.jasperEnabled) return;
+  if (state.view3D && getVoxelCamera().orbiting) return;
   event.preventDefault();
   const rect = canvas.getBoundingClientRect();
   const screenX = ((event.clientX - rect.left) / rect.width) * canvas.width;
