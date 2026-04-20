@@ -7594,9 +7594,7 @@ function drawProjectiles() {
         continue;
       }
       if (proj.kind === "bomb" || proj.kind === "rocket" || proj.kind === "missile") {
-        const vx = proj.vx || 1;
-        const vy = proj.vy || 0;
-        const angle = Math.atan2(vy, vx);
+        const angle = getProjectileScreenAngle(proj, view);
         ctx.save();
         ctx.translate(view.x, view.y);
         ctx.rotate(angle);
@@ -7638,9 +7636,7 @@ function drawProjectiles() {
         continue;
       }
       if (proj.kind === "spikeShot" || proj.kind === "homing") {
-        const vx = proj.vx || 1;
-        const vy = proj.vy || 0;
-        const angle = Math.atan2(vy, vx);
+        const angle = getProjectileScreenAngle(proj, view);
         ctx.save();
         ctx.translate(view.x, view.y);
         ctx.rotate(angle);
@@ -8098,6 +8094,20 @@ function spawnImpactFlash(x, y, color, radius = 8, ttl = 0.12) {
     color,
     lineWidth: 2,
   });
+}
+
+function getProjectileScreenAngle(proj, view) {
+  const vx = proj.vx || 0;
+  const vy = proj.vy || 0;
+  if (!state.view3D || (!vx && !vy)) {
+    return Math.atan2(vy, vx);
+  }
+  const nextView = projectVoxelPoint(
+    proj.x + vx,
+    proj.y + vy,
+    proj.kind === "gas" ? (proj.radius || 0) * 0.08 : 0,
+  );
+  return Math.atan2(nextView.y - view.y, nextView.x - view.x);
 }
 
 function drawPlacementPreview() {
