@@ -563,12 +563,12 @@ const legacyView = {
 
 const voxelView = {
   centerYRatio: 0.48,
-  tileWidth: 22,
-  tileHeight: 11,
+  tileWidth: 18,
+  tileHeight: 9,
   heightScale: 9,
-  defaultZoom: 1,
-  minZoom: 0.72,
-  maxZoom: 1.45,
+  defaultZoom: 0.72,
+  minZoom: 0.5,
+  maxZoom: 1.1,
 };
 
 function getSpawnPoint() {
