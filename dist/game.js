@@ -68,6 +68,7 @@ const APPWRITE_REDIRECT_URL = "https://towerdefensemini.appwrite.network/";
 const APPWRITE_REALTIME_ENDPOINT = "https://appwrite.io/v1";
 const APPWRITE_REALTIME_DATABASE_ID = localStorage.getItem("tdm_appwrite_realtime_database") || "";
 const APPWRITE_REALTIME_COLLECTION_ID = localStorage.getItem("tdm_appwrite_realtime_collection") || "";
+const VIEW_3D_KEY = "tdm_view_3d";
 const PROFILE_NAME_KEY = "tdm_profile_name";
 const PROFILE_AVATAR_KEY = "tdm_profile_avatar";
 const PROFILE_MAX_WAVE_KEY = "tdm_profile_max_wave";
@@ -192,6 +193,7 @@ const ui = {
   closeTutorial: document.getElementById("close-tutorial"),
   jasperModal: document.getElementById("jasper-modal"),
   openJasper: document.getElementById("open-jasper"),
+  toggle3D: document.getElementById("toggle-3d"),
   closeJasper: document.getElementById("close-jasper"),
   damageFlash: document.getElementById("damage-flash"),
   playArea: document.getElementById("play-area"),
@@ -437,6 +439,7 @@ const state = {
   nukeSmoke: null,
   sixSevenActive: false,
   sixSevenTimer: null,
+  view3D: localStorage.getItem(VIEW_3D_KEY) !== "false",
   halfCash: false,
   radioactiveFactoryBonus: 0,
   waveKillsThisWave: 0,
@@ -547,6 +550,13 @@ const firstPersonView = {
   swayAmplitude: 0.0035,
 };
 
+const legacyView = {
+  horizonRatio: 0.22,
+  depthExponent: 1.65,
+  lateralExponent: 1.3,
+  swayAmplitude: 0.004,
+};
+
 function cellKey(cx, cy) {
   return `${cx},${cy}`;
 }
@@ -565,6 +575,20 @@ function worldToCell(x, y) {
 }
 
 function getFirstPersonProjection(x, y, lift = 0) {
+  if (!state.view3D) {
+    const horizonY = canvas.height * legacyView.horizonRatio;
+    const groundHeight = canvas.height - horizonY;
+    const depth = Math.max(0, Math.min(1, y / canvas.height));
+    const easedDepth = depth * depth * (3 - 2 * depth);
+    const lateral = 0.12 + Math.pow(easedDepth, legacyView.lateralExponent) * 0.88;
+    const sway = Math.sin(performance.now() * 0.00035) * canvas.width * legacyView.swayAmplitude;
+    return {
+      x: canvas.width / 2 + (x - canvas.width / 2) * lateral + sway * (1 - easedDepth),
+      y: horizonY + groundHeight * Math.pow(depth, legacyView.depthExponent) - lift * (0.25 + easedDepth * 0.75),
+      scale: 0.5 + easedDepth * 0.95,
+      depth: easedDepth,
+    };
+  }
   const camera = state.camera || { x: canvas.width / 2, y: canvas.height * 0.18, bob: 0 };
   const dx = x - camera.x;
   const dy = y - camera.y;
@@ -587,6 +611,30 @@ function projectPoint(x, y, lift = 0) {
 }
 
 function screenToWorld(screenX, screenY) {
+  if (!state.view3D) {
+    const horizonY = canvas.height * legacyView.horizonRatio;
+    const groundHeight = canvas.height - horizonY;
+    const depthRatio = Math.max(0, Math.min(1, (screenY - horizonY) / groundHeight));
+    let low = 0;
+    let high = 1;
+    let easedDepth = depthRatio;
+    for (let i = 0; i < 10; i += 1) {
+      const mid = (low + high) / 2;
+      const projected = Math.pow(mid, legacyView.depthExponent);
+      if (projected < depthRatio) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+      easedDepth = mid;
+    }
+    const lateral = 0.12 + Math.pow(easedDepth, legacyView.lateralExponent) * 0.88;
+    const sway = Math.sin(performance.now() * 0.00035) * canvas.width * legacyView.swayAmplitude;
+    return {
+      x: canvas.width / 2 + (screenX - canvas.width / 2 - sway * (1 - easedDepth)) / Math.max(0.001, lateral),
+      y: Math.max(0, easedDepth * canvas.height),
+    };
+  }
   const camera = state.camera || { x: canvas.width / 2, y: canvas.height * 0.18, bob: 0 };
   const horizonY = canvas.height * firstPersonView.horizonRatio;
   const groundHeight = canvas.height - horizonY;
@@ -613,6 +661,7 @@ function screenToWorld(screenX, screenY) {
 }
 
 function updateCamera(dt) {
+  if (!state.view3D) return;
   const camera = state.camera || (state.camera = { x: canvas.width / 2, y: canvas.height * 0.18, bob: 0 });
   const forward = state.moveKeys.has("KeyS") || state.moveKeys.has("ArrowDown") ? 1 : 0;
   const backward = state.moveKeys.has("KeyW") || state.moveKeys.has("ArrowUp") ? 1 : 0;
@@ -926,6 +975,9 @@ function updateHud() {
   }
   if (ui.halfCash) {
     ui.halfCash.textContent = `Half Cash: ${state.halfCash ? "On" : "Off"}`;
+  }
+  if (ui.toggle3D) {
+    ui.toggle3D.textContent = `3D: ${state.view3D ? "On" : "Off"}`;
   }
   if (ui.jasperInfiniteFunds) {
     ui.jasperInfiniteFunds.textContent = `Infinite Funds: ${state.infiniteGold ? "On" : "Off"}`;
@@ -7555,20 +7607,22 @@ function draw() {
   drawPlacementPreview();
   ctx.restore();
   drawNukeSmokeOverlay();
-  ctx.save();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(canvas.width / 2 - 8, canvas.height / 2);
-  ctx.lineTo(canvas.width / 2 - 2, canvas.height / 2);
-  ctx.moveTo(canvas.width / 2 + 2, canvas.height / 2);
-  ctx.lineTo(canvas.width / 2 + 8, canvas.height / 2);
-  ctx.moveTo(canvas.width / 2, canvas.height / 2 - 8);
-  ctx.lineTo(canvas.width / 2, canvas.height / 2 - 2);
-  ctx.moveTo(canvas.width / 2, canvas.height / 2 + 2);
-  ctx.lineTo(canvas.width / 2, canvas.height / 2 + 8);
-  ctx.stroke();
-  ctx.restore();
+  if (state.view3D) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2 - 8, canvas.height / 2);
+    ctx.lineTo(canvas.width / 2 - 2, canvas.height / 2);
+    ctx.moveTo(canvas.width / 2 + 2, canvas.height / 2);
+    ctx.lineTo(canvas.width / 2 + 8, canvas.height / 2);
+    ctx.moveTo(canvas.width / 2, canvas.height / 2 - 8);
+    ctx.lineTo(canvas.width / 2, canvas.height / 2 - 2);
+    ctx.moveTo(canvas.width / 2, canvas.height / 2 + 2);
+    ctx.lineTo(canvas.width / 2, canvas.height / 2 + 8);
+    ctx.stroke();
+    ctx.restore();
+  }
   if (state.selectedTower && state.selectedTower.type !== "wall" && state.selectedTower.type !== "mine") {
     ctx.fillStyle = "#e2e8f0";
     ctx.fillText("Click to upgrade (50)", 18, canvas.height - 20);
@@ -8188,6 +8242,21 @@ if (ui.autoWave) {
 if (ui.halfCash) {
   ui.halfCash.addEventListener("click", () => {
     state.halfCash = !state.halfCash;
+    updateHud();
+  });
+}
+
+if (ui.toggle3D) {
+  ui.toggle3D.addEventListener("click", () => {
+    state.view3D = !state.view3D;
+    localStorage.setItem(VIEW_3D_KEY, state.view3D ? "true" : "false");
+    if (state.view3D && !state.camera) {
+      state.camera = {
+        x: canvas.width * 0.5,
+        y: canvas.height * 0.18,
+        bob: 0,
+      };
+    }
     updateHud();
   });
 }
