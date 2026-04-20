@@ -612,27 +612,9 @@ function projectPoint(x, y, lift = 0) {
 
 function screenToWorld(screenX, screenY) {
   if (!state.view3D) {
-    const horizonY = canvas.height * legacyView.horizonRatio;
-    const groundHeight = canvas.height - horizonY;
-    const depthRatio = Math.max(0, Math.min(1, (screenY - horizonY) / groundHeight));
-    let low = 0;
-    let high = 1;
-    let easedDepth = depthRatio;
-    for (let i = 0; i < 10; i += 1) {
-      const mid = (low + high) / 2;
-      const projected = Math.pow(mid, legacyView.depthExponent);
-      if (projected < depthRatio) {
-        low = mid;
-      } else {
-        high = mid;
-      }
-      easedDepth = mid;
-    }
-    const lateral = 0.12 + Math.pow(easedDepth, legacyView.lateralExponent) * 0.88;
-    const sway = Math.sin(performance.now() * 0.00035) * canvas.width * legacyView.swayAmplitude;
     return {
-      x: canvas.width / 2 + (screenX - canvas.width / 2 - sway * (1 - easedDepth)) / Math.max(0.001, lateral),
-      y: Math.max(0, easedDepth * canvas.height),
+      x: screenX,
+      y: screenY,
     };
   }
   const camera = state.camera || { x: canvas.width / 2, y: canvas.height * 0.18, bob: 0 };
