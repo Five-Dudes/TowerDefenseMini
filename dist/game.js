@@ -193,7 +193,6 @@ const ui = {
   closeTutorial: document.getElementById("close-tutorial"),
   jasperModal: document.getElementById("jasper-modal"),
   openJasper: document.getElementById("open-jasper"),
-  toggle3D: document.getElementById("toggle-3d"),
   teleportSpawn: document.getElementById("teleport-spawn"),
   closeJasper: document.getElementById("close-jasper"),
   damageFlash: document.getElementById("damage-flash"),
@@ -443,7 +442,7 @@ const state = {
   nukeSmoke: null,
   sixSevenActive: false,
   sixSevenTimer: null,
-  view3D: localStorage.getItem(VIEW_3D_KEY) !== "false",
+  view3D: true,
   halfCash: false,
   radioactiveFactoryBonus: 0,
   waveKillsThisWave: 0,
@@ -1081,9 +1080,6 @@ function updateHud() {
   }
   if (ui.halfCash) {
     ui.halfCash.textContent = `Half Cash: ${state.halfCash ? "On" : "Off"}`;
-  }
-  if (ui.toggle3D) {
-    ui.toggle3D.textContent = `3D: ${state.view3D ? "On" : "Off"}`;
   }
   if (ui.teleportSpawn) {
     ui.teleportSpawn.disabled = !state.view3D;
@@ -3536,6 +3532,7 @@ function fireProjectile(tower, enemy, stats) {
         slow: stats.slow,
         sourceType,
         owner: tower,
+        screenAngle: getSpawnScreenAngle(x, y, targetPos.x, targetPos.y),
         poisonDps: 0,
         poisonDuration: 0,
         embrittlementPercent: 0,
@@ -3569,6 +3566,7 @@ function fireProjectile(tower, enemy, stats) {
           sourceType,
           owner: tower,
           armorPierce: true,
+          screenAngle: getSpawnScreenAngle(muzzle.x, muzzle.y, targetPos.x, targetPos.y),
         });
       }
     }
@@ -3593,6 +3591,7 @@ function fireProjectile(tower, enemy, stats) {
         ttl: stats.bombProjectileKind === "rocket" ? 5 : undefined,
         sourceType,
         owner: tower,
+        screenAngle: getSpawnScreenAngle(muzzle.x, muzzle.y, targetPos.x, targetPos.y),
         clusterCount: stats.bombClusterCount || 0,
         clusterChildCount: stats.bombClusterChildCount || 0,
         clusterDamage: stats.bombClusterDamage || 0,
@@ -3625,6 +3624,7 @@ function fireProjectile(tower, enemy, stats) {
         vx: (dx / dist) * 120,
         vy: (dy / dist) * 120,
         ttl: 0.08,
+        screenAngle: getSpawnScreenAngle(muzzle.x, muzzle.y, enemy.x, enemy.y),
       });
       continue;
     }
@@ -3638,6 +3638,7 @@ function fireProjectile(tower, enemy, stats) {
       slow: stats.slow,
       sourceType,
       owner: tower,
+      screenAngle: getSpawnScreenAngle(muzzle.x, muzzle.y, targetPos.x, targetPos.y),
       poisonDps,
       poisonDuration,
       embrittlementPercent,
@@ -4280,6 +4281,7 @@ function updateTraps(dt) {
               slow: 0,
               sourceType: trap.kind === "sentry" ? "sentry" : "trap",
               owner: trap.kind === "sentry" ? { x: trap.x, y: trap.y, owner: trap.owner, kind: "sentry" } : trap.owner,
+              screenAngle: getSpawnScreenAngle(trap.x, trap.y, target.x, target.y),
               poisonDps: 0,
               poisonDuration: 0,
               embrittlementPercent: 0,
@@ -6866,6 +6868,314 @@ function drawDroneBody(x, y, scale = 1, color = "#34d399") {
   ctx.fill();
 }
 
+function drawVoxelTower3D(tower, data, supportEffects, spawnAlpha) {
+  const baseColor = tower.disabled ? "#64748b" : (data.color || "#e2e8f0");
+  const aim = coalesce(tower.aimAngle, tower.facing, 0);
+  const alpha = Math.max(0.35, spawnAlpha);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  if (tower.type === "wall") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.96, 14, {
+      top: "#0f172a",
+      left: "#1e293b",
+      right: "#334155",
+      edge: "#cbd5e1",
+    });
+    drawVoxelPrism(tower.x, tower.y - grid.size * 0.08, grid.size * 0.48, 8, {
+      top: "#1e293b",
+      left: "#334155",
+      right: "#475569",
+      edge: "#e2e8f0",
+    });
+  } else if (tower.type === "watch" || tower.type === "dart") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.62, tower.type === "watch" ? 16 : 14, {
+      top: baseColor,
+      left: shadeColor(baseColor, 0.72),
+      right: shadeColor(baseColor, 0.54),
+      edge: shadeColor(baseColor, 0.22),
+    });
+    drawVoxelPrism(tower.x + Math.cos(aim) * grid.size * 0.24, tower.y + Math.sin(aim) * grid.size * 0.24, grid.size * 0.22, 10, {
+      top: shadeColor(baseColor, 0.95),
+      left: shadeColor(baseColor, 0.68),
+      right: shadeColor(baseColor, 0.46),
+      edge: shadeColor(baseColor, 0.2),
+    });
+  } else if (tower.type === "freeze") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.66, 15, {
+      top: "#7dd3fc",
+      left: "#38bdf8",
+      right: "#0ea5e9",
+      edge: "#dbeafe",
+    });
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.18, 22, {
+      top: "#e0f2fe",
+      left: "#bae6fd",
+      right: "#7dd3fc",
+      edge: "#f8fafc",
+    });
+  } else if (tower.type === "bomb") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.68, 14, {
+      top: baseColor,
+      left: shadeColor(baseColor, 0.76),
+      right: shadeColor(baseColor, 0.56),
+      edge: shadeColor(baseColor, 0.25),
+    });
+    drawVoxelPrism(tower.x, tower.y - grid.size * 0.18, grid.size * 0.2, 12, {
+      top: "#f8fafc",
+      left: "#e2e8f0",
+      right: "#94a3b8",
+      edge: "#0f172a",
+    });
+  } else if (tower.type === "laser") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.58, 22, {
+      top: "#0f172a",
+      left: "#1e293b",
+      right: "#334155",
+      edge: "#f8fafc",
+    });
+    drawVoxelPrism(tower.x + Math.cos(aim) * grid.size * 0.18, tower.y + Math.sin(aim) * grid.size * 0.18, grid.size * 0.16, 6, {
+      top: "#f97316",
+      left: "#fb7185",
+      right: "#f43f5e",
+      edge: "#fef2f2",
+    });
+  } else if (tower.type === "flame") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.64, 17, {
+      top: baseColor,
+      left: shadeColor(baseColor, 0.74),
+      right: shadeColor(baseColor, 0.54),
+      edge: shadeColor(baseColor, 0.22),
+    });
+    drawVoxelPrism(tower.x + Math.cos(aim) * grid.size * 0.24, tower.y + Math.sin(aim) * grid.size * 0.24, grid.size * 0.24, 8, {
+      top: "#fed7aa",
+      left: "#fb923c",
+      right: "#ea580c",
+      edge: "#fff7ed",
+    });
+  } else if (tower.type === "drone") {
+    const droneSize = tower.isMini ? grid.size * 0.34 : grid.size * 0.62;
+    const droneHeight = tower.isMini ? 8 : 16;
+    drawVoxelPrism(tower.x, tower.y, droneSize, droneHeight, {
+      top: baseColor,
+      left: shadeColor(baseColor, 0.78),
+      right: shadeColor(baseColor, 0.58),
+      edge: shadeColor(baseColor, 0.26),
+    });
+    drawVoxelPrism(tower.x - grid.size * 0.16, tower.y, droneSize * 0.45, 5, {
+      top: "#86efac",
+      left: "#22c55e",
+      right: "#15803d",
+      edge: "#dcfce7",
+    });
+    drawVoxelPrism(tower.x + grid.size * 0.16, tower.y, droneSize * 0.45, 5, {
+      top: "#86efac",
+      left: "#22c55e",
+      right: "#15803d",
+      edge: "#dcfce7",
+    });
+  } else if (tower.type === "factory") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.78, 18, {
+      top: baseColor,
+      left: shadeColor(baseColor, 0.74),
+      right: shadeColor(baseColor, 0.52),
+      edge: shadeColor(baseColor, 0.22),
+    });
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.28, 24, {
+      top: "#facc15",
+      left: "#eab308",
+      right: "#b45309",
+      edge: "#fef3c7",
+    });
+  } else if (tower.type === "op") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.98, 24, {
+      top: "#0f172a",
+      left: "#1e293b",
+      right: "#334155",
+      edge: "#facc15",
+    });
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.22, 30, {
+      top: "#facc15",
+      left: "#fde047",
+      right: "#f59e0b",
+      edge: "#fff7cc",
+    });
+    drawVoxelPrism(tower.x + grid.size * 0.2, tower.y, grid.size * 0.16, 16, {
+      top: "#facc15",
+      left: "#fde047",
+      right: "#f59e0b",
+      edge: "#fff7cc",
+    });
+    drawVoxelPrism(tower.x - grid.size * 0.2, tower.y, grid.size * 0.16, 16, {
+      top: "#facc15",
+      left: "#fde047",
+      right: "#f59e0b",
+      edge: "#fff7cc",
+    });
+  } else if (tower.type === "spikeTower") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.58, 12, {
+      top: baseColor,
+      left: shadeColor(baseColor, 0.75),
+      right: shadeColor(baseColor, 0.55),
+      edge: shadeColor(baseColor, 0.22),
+    });
+    const spikeColor = supportEffects.poisonDps > 0 ? "#c084fc" : "#f8fafc";
+    const spikeOffsets = [
+      [0, -grid.size * 0.18],
+      [grid.size * 0.18, 0],
+      [0, grid.size * 0.18],
+      [-grid.size * 0.18, 0],
+    ];
+    for (const [ox, oy] of spikeOffsets) {
+      drawVoxelPrism(tower.x + ox, tower.y + oy, grid.size * 0.12, 10, {
+        top: spikeColor,
+        left: shadeColor(spikeColor, 0.78),
+        right: shadeColor(spikeColor, 0.6),
+        edge: shadeColor(spikeColor, 0.25),
+      });
+    }
+  } else if (tower.type === "secret") {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.56, 14, {
+      top: "#f472b6",
+      left: "#ec4899",
+      right: "#be185d",
+      edge: "#fff1f2",
+    });
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.18, 22, {
+      top: "#f8fafc",
+      left: "#fbcfe8",
+      right: "#f9a8d4",
+      edge: "#ffffff",
+    });
+  } else {
+    drawVoxelPrism(tower.x, tower.y, grid.size * 0.7, 14 + (tower.level || 1) * 1.5, {
+      top: baseColor,
+      left: shadeColor(baseColor, 0.74),
+      right: shadeColor(baseColor, 0.52),
+      edge: shadeColor(baseColor, 0.22),
+    });
+  }
+  if (tower === state.selectedTower) {
+    const ring = projectVoxelPoint(tower.x, tower.y, 18);
+    ctx.strokeStyle = "rgba(251, 191, 36, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y + 6, grid.size * 0.42 * (ring.scale || 1), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawVoxelEnemy3D(enemy, pos) {
+  const tierScale = 1 + (enemy.tier - 1) * 0.12;
+  const size = enemy.type === "swarmlet" ? 10 : enemy.type === "heavy" ? 18 : enemy.isBoss ? 24 : 14;
+  const lift = enemy.flyHeight || 0;
+  const color = enemy.type === "speedy" || enemy.type === "boss_fast"
+    ? "#facc15"
+    : enemy.type === "heavy" || enemy.type === "boss_pentagon"
+      ? "#a855f7"
+      : enemy.type === "boss_hexagon"
+        ? "#94a3b8"
+        : enemy.type === "diamond" || enemy.type === "boss_diamond"
+          ? "#e0f2fe"
+          : enemy.type === "labrat"
+            ? "#fbbf24"
+            : enemy.type === "thief"
+              ? "#f59e0b"
+              : enemy.type === "troll"
+                ? "#f472b6"
+                : enemy.type === "buffer"
+                  ? "#22c55e"
+                  : enemy.type === "saboteur"
+                    ? "#ef4444"
+                    : enemy.type === "chimera"
+                      ? "#c084fc"
+                      : enemy.type === "broodMother"
+                        ? "#ec4899"
+                        : enemy.type === "flying"
+                          ? "#60a5fa"
+          : enemy.type === "aegis"
+            ? "#93c5fd"
+            : "#fb7185";
+  const stealthAlpha = enemy.stealth && !enemy.revealed ? 0.45 : 1;
+  ctx.save();
+  ctx.globalAlpha = stealthAlpha;
+  if (enemy.isBoss) {
+    drawVoxelPrism(pos.x, pos.y, size * tierScale * 1.1, 16 + tierScale * 6 + lift, {
+      top: shadeColor(color, 1.05),
+      left: shadeColor(color, 0.72),
+      right: shadeColor(color, 0.54),
+      edge: shadeColor(color, 0.22),
+    });
+    drawVoxelPrism(pos.x, pos.y - grid.size * 0.12, size * tierScale * 0.72, 12 + lift, {
+      top: shadeColor(color, 1.15),
+      left: shadeColor(color, 0.82),
+      right: shadeColor(color, 0.62),
+      edge: shadeColor(color, 0.3),
+    });
+  } else if (enemy.type === "flying") {
+    drawVoxelPrism(pos.x, pos.y, size * tierScale * 0.9, 8 + lift, {
+      top: shadeColor(color, 1.05),
+      left: shadeColor(color, 0.75),
+      right: shadeColor(color, 0.56),
+      edge: shadeColor(color, 0.22),
+    });
+    drawVoxelPrism(pos.x - grid.size * 0.16, pos.y, size * 0.24, 4, {
+      top: shadeColor(color, 0.9),
+      left: shadeColor(color, 0.7),
+      right: shadeColor(color, 0.5),
+      edge: shadeColor(color, 0.25),
+    });
+    drawVoxelPrism(pos.x + grid.size * 0.16, pos.y, size * 0.24, 4, {
+      top: shadeColor(color, 0.9),
+      left: shadeColor(color, 0.7),
+      right: shadeColor(color, 0.5),
+      edge: shadeColor(color, 0.25),
+    });
+  } else if (enemy.type === "heavy") {
+    drawVoxelPrism(pos.x, pos.y, size * tierScale, 12 + tierScale * 6 + lift, {
+      top: color,
+      left: shadeColor(color, 0.76),
+      right: shadeColor(color, 0.56),
+      edge: shadeColor(color, 0.2),
+    });
+    drawVoxelPrism(pos.x, pos.y - grid.size * 0.12, size * 0.42, 8 + lift, {
+      top: shadeColor(color, 1.08),
+      left: shadeColor(color, 0.82),
+      right: shadeColor(color, 0.64),
+      edge: shadeColor(color, 0.25),
+    });
+  } else if (enemy.type === "swarmlet" || enemy.type === "speedy") {
+    drawVoxelPrism(pos.x, pos.y, size * tierScale * 0.86, 8 + tierScale * 4 + lift, {
+      top: color,
+      left: shadeColor(color, 0.76),
+      right: shadeColor(color, 0.58),
+      edge: shadeColor(color, 0.2),
+    });
+  } else {
+    drawVoxelPrism(pos.x, pos.y, size * tierScale, 10 + tierScale * 6 + lift, {
+      top: enemy.stealth && !enemy.revealed ? shadeColor(color, 1.1) : color,
+      left: shadeColor(color, 0.76),
+      right: shadeColor(color, 0.56),
+      edge: shadeColor(color, 0.2),
+    });
+    drawVoxelPrism(pos.x, pos.y - grid.size * 0.11, size * 0.36, 6 + lift * 0.2, {
+      top: shadeColor(color, 1.1),
+      left: shadeColor(color, 0.84),
+      right: shadeColor(color, 0.64),
+      edge: shadeColor(color, 0.26),
+    });
+  }
+  if (enemy.buffer) {
+    drawVoxelPrism(pos.x, pos.y, size * 1.15, 4, {
+      top: "rgba(34, 197, 94, 0.24)",
+      left: "rgba(34, 197, 94, 0.18)",
+      right: "rgba(22, 163, 74, 0.18)",
+      edge: "rgba(187, 247, 208, 0.22)",
+    });
+  }
+  ctx.restore();
+}
+
 function drawTowers() {
   for (const tower of state.towers) {
     const data = towerTypes[tower.type];
@@ -6874,36 +7184,7 @@ function drawTowers() {
     const spawnAlpha = tower.spawnInTimer > 0 ? 1 - tower.spawnInTimer / 0.18 : 1;
     const spawnScale = tower.spawnInTimer > 0 ? 0.82 + spawnAlpha * 0.18 : 1;
     if (state.view3D) {
-      ctx.save();
-      ctx.globalAlpha = Math.max(0.35, spawnAlpha);
-      const baseColor = tower.disabled ? "#64748b" : (data.color || "#e2e8f0");
-      const size = tower.type === "wall" ? grid.size * 0.92 : tower.type === "op" ? grid.size * 0.98 : tower.type === "factory" ? grid.size * 0.78 : tower.type === "drone" ? (tower.isMini ? grid.size * 0.36 : grid.size * 0.66) : grid.size * 0.7;
-      const height = tower.type === "wall" ? 14 : tower.type === "op" ? 24 : tower.type === "factory" ? 18 : tower.type === "drone" ? (tower.isMini ? 8 : 16) : tower.type === "spikeTower" ? 12 : tower.type === "laser" ? 20 : 14;
-      drawVoxelPrism(tower.x, tower.y, size, height + (tower.level || 1) * 1.5, {
-        top: baseColor,
-        left: shadeColor(baseColor, 0.74),
-        right: shadeColor(baseColor, 0.52),
-        edge: shadeColor(baseColor, 0.22),
-      });
-      if (tower.type === "drone") {
-        drawVoxelPrism(tower.x, tower.y, size * 0.45, 26, {
-          top: shadeColor(baseColor, 1.08),
-          left: shadeColor(baseColor, 0.9),
-          right: shadeColor(baseColor, 0.75),
-          edge: shadeColor(baseColor, 0.3),
-        });
-      }
-      if (tower === state.selectedTower) {
-        ctx.save();
-        const ring = projectVoxelPoint(tower.x, tower.y, height + 4);
-        ctx.strokeStyle = "rgba(251, 191, 36, 0.9)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(ring.x, ring.y + 6, grid.size * 0.42 * (ring.scale || 1), 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
-      ctx.restore();
+      drawVoxelTower3D(tower, data, supportEffects, spawnAlpha);
       continue;
     }
     const view = projectPoint(tower.x, tower.y);
@@ -7192,45 +7473,7 @@ function drawEnemies() {
   if (state.view3D) {
     for (const enemy of state.enemies) {
       const pos = getEnemyPosition(enemy);
-      const tierScale = 1 + (enemy.tier - 1) * 0.12;
-      const size = enemy.type === "swarmlet" ? 10 : enemy.type === "heavy" ? 18 : enemy.isBoss ? 24 : 14;
-      const lift = enemy.flyHeight || 0;
-      const color = enemy.type === "speedy" || enemy.type === "boss_fast"
-        ? "#facc15"
-        : enemy.type === "heavy" || enemy.type === "boss_pentagon"
-          ? "#a855f7"
-          : enemy.type === "boss_hexagon"
-            ? "#94a3b8"
-            : enemy.type === "diamond" || enemy.type === "boss_diamond"
-              ? "#e0f2fe"
-              : enemy.type === "labrat"
-                ? "#fbbf24"
-                : enemy.type === "thief"
-                  ? "#f59e0b"
-                  : enemy.type === "troll"
-                    ? "#f472b6"
-                    : enemy.type === "buffer"
-                      ? "#22c55e"
-                      : enemy.type === "saboteur"
-                        ? "#ef4444"
-                        : enemy.type === "chimera"
-                          ? "#c084fc"
-                          : enemy.type === "broodMother"
-                            ? "#ec4899"
-                            : enemy.type === "flying"
-                              ? "#60a5fa"
-          : enemy.type === "aegis"
-            ? "#93c5fd"
-            : "#fb7185";
-      ctx.save();
-      ctx.globalAlpha = enemy.stealth && !enemy.revealed ? 0.45 : 1;
-      drawVoxelPrism(pos.x, pos.y, size * tierScale, 10 + tierScale * 6 + lift, {
-        top: enemy.stealth && !enemy.revealed ? shadeColor(color, 1.1) : color,
-        left: shadeColor(color, 0.76),
-        right: shadeColor(color, 0.56),
-        edge: shadeColor(color, 0.2),
-      });
-      ctx.restore();
+      drawVoxelEnemy3D(enemy, pos);
     }
     return;
   }
@@ -8097,6 +8340,9 @@ function spawnImpactFlash(x, y, color, radius = 8, ttl = 0.12) {
 }
 
 function getProjectileScreenAngle(proj, view) {
+  if (Number.isFinite(proj.screenAngle)) {
+    return proj.screenAngle;
+  }
   const vx = proj.vx || 0;
   const vy = proj.vy || 0;
   if (!state.view3D || (!vx && !vy)) {
@@ -8108,6 +8354,15 @@ function getProjectileScreenAngle(proj, view) {
     proj.kind === "gas" ? (proj.radius || 0) * 0.08 : 0,
   );
   return Math.atan2(nextView.y - view.y, nextView.x - view.x);
+}
+
+function getSpawnScreenAngle(startX, startY, endX, endY, lift = 0) {
+  if (!state.view3D) {
+    return Math.atan2(endY - startY, endX - startX);
+  }
+  const start = projectVoxelPoint(startX, startY, lift);
+  const end = projectVoxelPoint(endX, endY, lift);
+  return Math.atan2(end.y - start.y, end.x - start.x);
 }
 
 function drawPlacementPreview() {
@@ -8828,17 +9083,6 @@ if (ui.autoWave) {
 if (ui.halfCash) {
   ui.halfCash.addEventListener("click", () => {
     state.halfCash = !state.halfCash;
-    updateHud();
-  });
-}
-
-if (ui.toggle3D) {
-  ui.toggle3D.addEventListener("click", () => {
-    state.view3D = !state.view3D;
-    localStorage.setItem(VIEW_3D_KEY, state.view3D ? "true" : "false");
-    if (state.view3D) {
-      state.camera = createVoxelCamera();
-    }
     updateHud();
   });
 }
