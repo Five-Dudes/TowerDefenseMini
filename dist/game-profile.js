@@ -568,11 +568,17 @@
     if (!ui.leaderboardModal) return;
     renderLeaderboard();
     ui.leaderboardModal.classList.remove("hidden");
+    ui.leaderboardModal.removeAttribute("hidden");
+    ui.leaderboardModal.setAttribute("aria-hidden", "false");
   }
 
   function closeLeaderboardModal() {
     const ui = getUi();
-    if (ui.leaderboardModal) ui.leaderboardModal.classList.add("hidden");
+    if (ui.leaderboardModal) {
+      ui.leaderboardModal.classList.add("hidden");
+      ui.leaderboardModal.setAttribute("hidden", "");
+      ui.leaderboardModal.setAttribute("aria-hidden", "true");
+    }
   }
 
   function syncProfileModal() {
@@ -669,11 +675,17 @@
     if (!loginState.loggedIn || !ui.profileModal) return;
     syncProfileModal();
     ui.profileModal.classList.remove("hidden");
+    ui.profileModal.removeAttribute("hidden");
+    ui.profileModal.setAttribute("aria-hidden", "false");
   }
 
   function closeProfileModal() {
     const ui = getUi();
-    if (ui.profileModal) ui.profileModal.classList.add("hidden");
+    if (ui.profileModal) {
+      ui.profileModal.classList.add("hidden");
+      ui.profileModal.setAttribute("hidden", "");
+      ui.profileModal.setAttribute("aria-hidden", "true");
+    }
   }
 
   async function handleProfileAvatarUpload(event) {

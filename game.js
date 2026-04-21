@@ -9607,10 +9607,6 @@ if (ui.jasperModal) {
   ui.jasperModal.classList.add("hidden");
 }
 
-if (ui.leaderboardModal) {
-  ui.leaderboardModal.classList.add("hidden");
-}
-
 function resetGame() {
   state.lives = 100;
   state.maxLives = 100;
@@ -9697,6 +9693,16 @@ function resetGame() {
   if (ui.jasperModal) ui.jasperModal.classList.add("hidden");
   if (ui.loginModal) ui.loginModal.classList.add("hidden");
   if (ui.alertModal) ui.alertModal.classList.add("hidden");
+  if (ui.profileModal) {
+    ui.profileModal.classList.add("hidden");
+    ui.profileModal.setAttribute("hidden", "");
+    ui.profileModal.setAttribute("aria-hidden", "true");
+  }
+  if (ui.leaderboardModal) {
+    ui.leaderboardModal.classList.add("hidden");
+    ui.leaderboardModal.setAttribute("hidden", "");
+    ui.leaderboardModal.setAttribute("aria-hidden", "true");
+  }
   setActiveMap(state.mapId);
   if (state.view3D) {
     state.camera = createVoxelCamera();
