@@ -367,6 +367,12 @@ const state = {
   placing: null,
   dragPlacing: false,
   dragPlaceKey: null,
+  mapDragPending: false,
+  mapDragging: false,
+  mapDragStartX: 0,
+  mapDragStartY: 0,
+  mapDragStartCameraX: 0,
+  mapDragStartCameraY: 0,
   suppressClick: false,
   towers: [],
   enemies: [],
@@ -630,8 +636,25 @@ function clampCameraZoom(value) {
   return Math.max(voxelView.minZoom, Math.min(voxelView.maxZoom, value));
 }
 
+function getMapVisualPalette() {
+  const palette = state.mapPalette || {};
+  const top = palette.top || "#200b3b";
+  return {
+    top,
+    mid: palette.mid || shadeColor(top, 0.7),
+    bottom: palette.bottom || shadeColor(top, 0.45),
+    grid: palette.grid || shadeColor(top, 1.15),
+    pathOuter: palette.pathOuter || shadeColor(top, 0.45),
+    pathMid: palette.pathMid || shadeColor(top, 0.75),
+    pathInner: palette.pathInner || shadeColor(top, 1.1),
+    shadow: palette.shadow || "rgba(0, 0, 0, 0.3)",
+  };
+}
+
 function getVoxelFloorPattern() {
-  if (voxelView.floorPattern) {
+  const palette = getMapVisualPalette();
+  const patternKey = [palette.top, palette.mid, palette.bottom, palette.grid].join("|");
+  if (voxelView.floorPattern && voxelView.floorPatternKey === patternKey) {
     return voxelView.floorPattern;
   }
   const tileCanvas = document.createElement("canvas");
@@ -639,19 +662,20 @@ function getVoxelFloorPattern() {
   tileCanvas.height = grid.size * 2;
   const tileCtx = tileCanvas.getContext("2d");
   if (!tileCtx) return null;
-  tileCtx.fillStyle = "#0f172a";
+  tileCtx.fillStyle = palette.bottom;
   tileCtx.fillRect(0, 0, tileCanvas.width, tileCanvas.height);
-  tileCtx.fillStyle = "rgba(30, 41, 59, 0.92)";
+  tileCtx.fillStyle = palette.mid;
   tileCtx.fillRect(0, 0, grid.size, grid.size);
-  tileCtx.fillStyle = "rgba(15, 23, 42, 0.9)";
+  tileCtx.fillStyle = palette.top;
   tileCtx.fillRect(grid.size, 0, grid.size, grid.size);
   tileCtx.fillRect(0, grid.size, grid.size, grid.size);
-  tileCtx.fillStyle = "rgba(51, 65, 85, 0.9)";
+  tileCtx.fillStyle = palette.grid;
   tileCtx.fillRect(grid.size, grid.size, grid.size, grid.size);
-  tileCtx.strokeStyle = "rgba(148, 163, 184, 0.12)";
+  tileCtx.strokeStyle = palette.grid;
   tileCtx.lineWidth = 2;
   tileCtx.strokeRect(1, 1, tileCanvas.width - 2, tileCanvas.height - 2);
   voxelView.floorPattern = ctx.createPattern(tileCanvas, "repeat");
+  voxelView.floorPatternKey = patternKey;
   return voxelView.floorPattern;
 }
 
@@ -783,6 +807,21 @@ function screenToWorld(screenX, screenY) {
   };
 }
 
+function panVoxelCameraByScreenDelta(deltaX, deltaY) {
+  if (!state.view3D) return;
+  const camera = getVoxelCamera();
+  const zoom = camera.zoom || voxelView.defaultZoom;
+  const yaw = camera.yaw || 0;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  const tileWidth = Math.max(0.001, voxelView.tileWidth * zoom);
+  const tileHeight = Math.max(0.001, voxelView.tileHeight * zoom);
+  const worldDX = (deltaX * cos) / tileWidth + (deltaY * sin) / tileHeight;
+  const worldDY = (-deltaX * sin) / tileWidth + (deltaY * cos) / tileHeight;
+  camera.x -= worldDX;
+  camera.y -= worldDY;
+}
+
 function updateCamera(dt) {
   if (!state.view3D) return;
   const camera = getVoxelCamera();
@@ -797,7 +836,7 @@ function updateCamera(dt) {
   const cos = Math.cos(yaw);
   const moveX = (forwardAxis * sin) + (rightAxis * cos);
   const moveY = (forwardAxis * cos) - (rightAxis * sin);
-  const targetSpeed = (state.gameStarted ? 260 : 180) * (state.paused ? 0.35 : 1);
+  const targetSpeed = (state.gameStarted ? 390 : 240) * (state.paused ? 0.35 : 1);
   camera.vx = camera.vx || 0;
   camera.vy = camera.vy || 0;
   camera.vx += (moveX * targetSpeed - camera.vx) * Math.min(1, dt * 10);
@@ -870,6 +909,24 @@ function setActiveMap(mapId) {
   state.mapPalette = map.palette || state.mapPalette;
   state.pathPoints = [];
   state.preferredPathCells = buildPreferredPathCells(state.mapPaths);
+  voxelView.floorPattern = null;
+  voxelView.floorPatternKey = "";
+}
+
+function isInteractiveWorldPoint(x, y) {
+  for (const trap of state.traps) {
+    if (Math.hypot(trap.x - x, trap.y - y) < (trap.hitRadius || 14)) {
+      return true;
+    }
+  }
+  for (const tower of state.towers) {
+    if (tower.type === "drone" && Number.isFinite(tower.baseX) && Number.isFinite(tower.baseY)) {
+      if (Math.hypot(tower.baseX - x, tower.baseY - y) <= 16) {
+        return true;
+      }
+    }
+  }
+  return state.towers.some((tower) => Math.hypot(tower.x - x, tower.y - y) < 20);
 }
 
 function getActivePaths() {
@@ -6301,6 +6358,7 @@ function updateSpawner(dt) {
 
 function drawPath() {
   const paths = getActivePaths();
+  const palette = getMapVisualPalette();
   const lossRatio = state.maxLives > 0 ? Math.min(1, Math.max(0, 1 - state.lives / state.maxLives)) : 0;
   ctx.imageSmoothingEnabled = true;
   function lerp(a, b, t) {
@@ -6309,9 +6367,9 @@ function drawPath() {
   function lerpColor(from, to, t) {
     return `rgb(${lerp(from[0], to[0], t)}, ${lerp(from[1], to[1], t)}, ${lerp(from[2], to[2], t)})`;
   }
-  const outerColor = lerpColor([8, 16, 32], [40, 8, 56], lossRatio);
-  const midColor = lerpColor([9, 20, 36], [54, 9, 80], lossRatio);
-  const innerColor = lerpColor([24, 74, 110], [120, 40, 150], lossRatio);
+  const outerColor = palette.pathOuter;
+  const midColor = palette.pathMid;
+  const innerColor = palette.pathInner;
   const time = performance.now();
   if (state.view3D) {
     for (const points of paths) {
@@ -6521,18 +6579,19 @@ function drawCastle() {
 }
 
 function drawGrid() {
+  const palette = getMapVisualPalette();
   if (state.view3D) {
     const camera = getVoxelCamera();
     const zoom = camera.zoom || voxelView.defaultZoom;
     const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    sky.addColorStop(0, "#08111f");
-    sky.addColorStop(0.55, "#0d1527");
-    sky.addColorStop(1, "#050a12");
+    sky.addColorStop(0, palette.top);
+    sky.addColorStop(0.55, palette.mid);
+    sky.addColorStop(1, palette.bottom);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     const glow = ctx.createRadialGradient(canvas.width / 2, canvas.height * 0.42, 24, canvas.width / 2, canvas.height * 0.42, canvas.width * 0.8);
-    glow.addColorStop(0, "rgba(56, 189, 248, 0.12)");
-    glow.addColorStop(0.35, "rgba(99, 102, 241, 0.06)");
+    glow.addColorStop(0, palette.grid);
+    glow.addColorStop(0.35, palette.mid);
     glow.addColorStop(1, "rgba(2, 6, 18, 0)");
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -6559,15 +6618,15 @@ function drawGrid() {
   }
   const horizonY = canvas.height * firstPersonView.horizonRatio;
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, "rgba(4, 6, 18, 0.9)");
-  gradient.addColorStop(Math.max(0.02, horizonY / canvas.height), "rgba(13, 18, 40, 0.92)");
-  gradient.addColorStop(1, "rgba(2, 6, 18, 1)");
+  gradient.addColorStop(0, palette.bottom);
+  gradient.addColorStop(Math.max(0.02, horizonY / canvas.height), palette.mid);
+  gradient.addColorStop(1, palette.bottom);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const glow = ctx.createRadialGradient(canvas.width / 2, horizonY, 24, canvas.width / 2, horizonY, canvas.width * 0.85);
-  glow.addColorStop(0, "rgba(56, 189, 248, 0.18)");
-  glow.addColorStop(0.35, "rgba(99, 102, 241, 0.1)");
+  glow.addColorStop(0, palette.grid);
+  glow.addColorStop(0.35, palette.mid);
   glow.addColorStop(1, "rgba(2, 6, 18, 0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -6594,8 +6653,9 @@ function drawGrid() {
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.strokeStyle = "rgba(125, 211, 252, 0.12)";
+  ctx.strokeStyle = palette.grid;
   ctx.lineWidth = 1.25;
+  ctx.globalAlpha = 0.18;
   for (let x = 0; x <= canvas.width; x += grid.size) {
     ctx.beginPath();
     let first = true;
@@ -6610,8 +6670,9 @@ function drawGrid() {
     }
     ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(148, 163, 184, 0.08)";
+  ctx.strokeStyle = palette.grid;
   ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.1;
   for (let y = canvas.height; y >= 0; y -= grid.size) {
     ctx.beginPath();
     let first = true;
@@ -8660,6 +8721,19 @@ canvas.addEventListener("mousemove", (event) => {
     camera.orbitStartX = screenX;
     camera.orbitStartYaw = camera.yaw;
   }
+  if (state.view3D && state.mapDragPending && camera) {
+    const deltaX = screenX - state.mapDragStartX;
+    const deltaY = screenY - state.mapDragStartY;
+    if (!state.mapDragging && Math.hypot(deltaX, deltaY) >= 6) {
+      state.mapDragging = true;
+      state.suppressClick = true;
+    }
+    if (state.mapDragging) {
+      camera.x = state.mapDragStartCameraX;
+      camera.y = state.mapDragStartCameraY;
+      panVoxelCameraByScreenDelta(deltaX, deltaY);
+    }
+  }
   const world = screenToWorld(screenX, screenY);
   state.mouse.x = world.x;
   state.mouse.y = world.y;
@@ -9653,6 +9727,8 @@ function resetGame() {
   state.selectedTrap = null;
   state.spawnTimer = 0;
   state.enemiesToSpawn = 0;
+  state.mapDragPending = false;
+  state.mapDragging = false;
   state.easterUnlocked = false;
   state.keysDown.clear();
   state.numberKeysDown.clear();
@@ -9987,6 +10063,8 @@ window.addEventListener("blur", () => {
   state.moveKeys.clear();
   state.keyBuffer = "";
   state.jasperProgress = 0;
+  state.mapDragPending = false;
+  state.mapDragging = false;
 });
 
 canvas.addEventListener("dblclick", () => {
@@ -10007,6 +10085,21 @@ canvas.addEventListener("mousedown", (event) => {
     camera.orbitStartY = screenY;
     camera.orbitStartYaw = camera.yaw || 0;
     return;
+  }
+  if (state.view3D && event.button === 0 && !state.placing) {
+    const rect = canvas.getBoundingClientRect();
+    const screenX = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const screenY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const { x, y } = screenToWorld(screenX, screenY);
+    if (!isInteractiveWorldPoint(x, y)) {
+      state.mapDragPending = true;
+      state.mapDragging = false;
+      state.mapDragStartX = screenX;
+      state.mapDragStartY = screenY;
+      const camera = getVoxelCamera();
+      state.mapDragStartCameraX = camera.x;
+      state.mapDragStartCameraY = camera.y;
+    }
   }
   if (event.button === 0 && state.placing) {
     const rect = canvas.getBoundingClientRect();
@@ -10069,6 +10162,13 @@ canvas.addEventListener("mouseup", () => {
   const camera = state.view3D ? getVoxelCamera() : null;
   if (camera) {
     camera.orbiting = false;
+  }
+  if (state.mapDragPending || state.mapDragging) {
+    state.mapDragPending = false;
+    if (state.mapDragging) {
+      state.suppressClick = true;
+    }
+    state.mapDragging = false;
   }
   if (state.dragPlacing) {
     state.dragPlacing = false;
