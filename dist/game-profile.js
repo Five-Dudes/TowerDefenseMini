@@ -759,6 +759,7 @@
     const canClearLeaderboard = loginState.loggedIn && allowedEmail === "jaxheung@gmail.com";
     if (ui.clearLeaderboard) {
       ui.clearLeaderboard.classList.toggle("hidden", !canClearLeaderboard);
+      ui.clearLeaderboard.setAttribute("aria-hidden", canClearLeaderboard ? "false" : "true");
       ui.clearLeaderboard.disabled = !canClearLeaderboard;
     }
   }

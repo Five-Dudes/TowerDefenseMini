@@ -9338,6 +9338,10 @@ if (ui.closeLeaderboard) {
 
 if (ui.clearLeaderboard) {
   ui.clearLeaderboard.addEventListener("click", () => {
+    const allowedEmail = String(loginState.email || "").trim().toLowerCase();
+    if (!loginState.loggedIn || allowedEmail !== "jaxheung@gmail.com") {
+      return;
+    }
     const confirmed = window.confirm("Clear all leaderboard entries? This cannot be undone.");
     if (!confirmed) return;
     if (typeof clearLeaderboardDocuments === "function") {
