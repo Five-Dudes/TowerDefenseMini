@@ -11,7 +11,7 @@
     coneAngle: 0.7,
     burnDps: 12,
     burnDuration: 2.4,
-    blocksPath: false,
+    blocksPath: true,
     onTick(context) {
       const { tower, stats, target, fireFlameCone, dt } = context;
       tower.cooldown = Math.max(0, (tower.cooldown || 0) - (dt || 0));

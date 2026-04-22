@@ -1916,7 +1916,8 @@ function placeTower(type, x, y) {
     if (!overlap) continue;
     return false;
   }
-  if (data.blocksPath) {
+  const blocksCurrentPath = data.blocksPath && isOnPath(x, y);
+  if (blocksCurrentPath) {
     const prevPaths = state.pathPoints.length > 0
       ? state.pathPoints.map((path) => path.map((point) => ({ x: point.x, y: point.y })))
       : [];
