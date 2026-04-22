@@ -442,6 +442,7 @@ const state = {
     shadow: "rgba(0, 0, 0, 0.3)",
   },
   preferredPathCells: new Set(),
+  preferredPathGrid: null,
   enemyHash: createSpatialHash(72),
   difficultyMultipliers: {
     enemyHp: 1,
@@ -909,6 +910,7 @@ function setActiveMap(mapId) {
   state.mapPalette = map.palette || state.mapPalette;
   state.pathPoints = [];
   state.preferredPathCells = buildPreferredPathCells(state.mapPaths);
+  state.preferredPathGrid = buildPreferredPathGrid(state.mapPaths);
   voxelView.floorPattern = null;
   voxelView.floorPatternKey = "";
 }
@@ -968,6 +970,19 @@ function buildPreferredPathCells(paths) {
   return cells;
 }
 
+function buildPreferredPathGrid(paths) {
+  const cells = new Uint8Array(gridCols * gridRows);
+  for (let cx = 0; cx < gridCols; cx += 1) {
+    for (let cy = 0; cy < gridRows; cy += 1) {
+      const { x, y } = cellToWorld(cx, cy);
+      if (isPointNearAnyPath(paths, x, y, 18)) {
+        cells[cy * gridCols + cx] = 1;
+      }
+    }
+  }
+  return cells;
+}
+
 function buildBlockedSet(extraCell) {
   const blocked = new Set();
   for (const tower of state.towers) {
@@ -979,6 +994,21 @@ function buildBlockedSet(extraCell) {
   }
   if (extraCell) {
     blocked.add(cellKey(extraCell.cx, extraCell.cy));
+  }
+  return blocked;
+}
+
+function buildBlockedGrid(extraCell) {
+  const blocked = new Uint8Array(gridCols * gridRows);
+  for (const tower of state.towers) {
+    const data = towerTypes[tower.type];
+    if (data && data.blocksPath) {
+      const cell = worldToCell(tower.x, tower.y);
+      blocked[cell.cy * gridCols + cell.cx] = 1;
+    }
+  }
+  if (extraCell) {
+    blocked[extraCell.cy * gridCols + extraCell.cx] = 1;
   }
   return blocked;
 }
@@ -1008,62 +1038,76 @@ function hasLiveEnemiesNearPoint(x, y, radius = 28) {
 }
 
 function findPath(fromCell, toCell, blocked) {
-  const startKey = cellKey(fromCell.cx, fromCell.cy);
-  const endKey = cellKey(toCell.cx, toCell.cy);
-  if (blocked.has(startKey) || blocked.has(endKey)) return null;
+  const totalCells = gridCols * gridRows;
+  const startIndex = fromCell.cy * gridCols + fromCell.cx;
+  const endIndex = toCell.cy * gridCols + toCell.cx;
+  if (blocked[startIndex] || blocked[endIndex]) return null;
 
-  const open = new Set([startKey]);
-  const cameFrom = new Map();
-  const gScore = new Map([[startKey, 0]]);
-  const fScore = new Map([[startKey, Math.abs(fromCell.cx - toCell.cx) + Math.abs(fromCell.cy - toCell.cy)]]);
+  const open = [startIndex];
+  const openSet = new Uint8Array(totalCells);
+  const closed = new Uint8Array(totalCells);
+  const cameFrom = new Int32Array(totalCells);
+  const gScore = new Float64Array(totalCells);
+  const fScore = new Float64Array(totalCells);
+  cameFrom.fill(-1);
+  gScore.fill(Infinity);
+  fScore.fill(Infinity);
+  openSet[startIndex] = 1;
+  gScore[startIndex] = 0;
+  fScore[startIndex] = Math.abs(fromCell.cx - toCell.cx) + Math.abs(fromCell.cy - toCell.cy);
 
-  function lowestFScoreKey() {
-    let bestKey = null;
-    let bestScore = Infinity;
-    for (const key of open) {
-      const score = coalesce(fScore.get(key), Infinity);
-      if (score < bestScore) {
-        bestScore = score;
-        bestKey = key;
+  while (open.length > 0) {
+    let bestIndex = 0;
+    let currentIndex = open[0];
+    let bestScore = fScore[currentIndex];
+    for (let i = 1; i < open.length; i += 1) {
+      const candidateIndex = open[i];
+      const candidateScore = fScore[candidateIndex];
+      if (candidateScore < bestScore) {
+        bestScore = candidateScore;
+        currentIndex = candidateIndex;
+        bestIndex = i;
       }
     }
-    return bestKey;
-  }
 
-  while (open.size > 0) {
-    const currentKey = lowestFScoreKey();
-    if (!currentKey) break;
-    if (currentKey === endKey) {
+    open.splice(bestIndex, 1);
+    openSet[currentIndex] = 0;
+    if (currentIndex === endIndex) {
       const pathCells = [];
-      let key = currentKey;
-      while (key) {
-        const [cx, cy] = key.split(",").map(Number);
-        pathCells.push({ cx, cy });
-        key = cameFrom.get(key);
+      let index = currentIndex;
+      while (index >= 0) {
+        pathCells.push({ cx: index % gridCols, cy: Math.floor(index / gridCols) });
+        index = cameFrom[index];
       }
       pathCells.reverse();
       return pathCells;
     }
-    open.delete(currentKey);
-    const [ccx, ccy] = currentKey.split(",").map(Number);
+
+    closed[currentIndex] = 1;
+    const cx = currentIndex % gridCols;
+    const cy = Math.floor(currentIndex / gridCols);
+    const baseScore = gScore[currentIndex];
     const neighbors = [
-      { cx: ccx + 1, cy: ccy },
-      { cx: ccx - 1, cy: ccy },
-      { cx: ccx, cy: ccy + 1 },
-      { cx: ccx, cy: ccy - 1 },
+      currentIndex + 1,
+      currentIndex - 1,
+      currentIndex + gridCols,
+      currentIndex - gridCols,
     ];
-    for (const neighbor of neighbors) {
-      if (neighbor.cx < 0 || neighbor.cy < 0 || neighbor.cx >= gridCols || neighbor.cy >= gridRows) continue;
-      const neighborKey = cellKey(neighbor.cx, neighbor.cy);
-      if (blocked.has(neighborKey)) continue;
-      const moveCost = state.preferredPathCells.has(neighborKey) ? 1 : 4;
-      const tentative = coalesce(gScore.get(currentKey), Infinity) + moveCost;
-      if (tentative < coalesce(gScore.get(neighborKey), Infinity)) {
-        cameFrom.set(neighborKey, currentKey);
-        gScore.set(neighborKey, tentative);
-        const h = Math.abs(neighbor.cx - toCell.cx) + Math.abs(neighbor.cy - toCell.cy);
-        fScore.set(neighborKey, tentative + h);
-        open.add(neighborKey);
+    for (const neighborIndex of neighbors) {
+      if (neighborIndex < 0 || neighborIndex >= totalCells) continue;
+      const nx = neighborIndex % gridCols;
+      const ny = Math.floor(neighborIndex / gridCols);
+      if (Math.abs(nx - cx) + Math.abs(ny - cy) !== 1) continue;
+      if (blocked[neighborIndex] || closed[neighborIndex]) continue;
+      const moveCost = state.preferredPathGrid && state.preferredPathGrid[neighborIndex] ? 1 : 4;
+      const tentative = baseScore + moveCost;
+      if (tentative >= gScore[neighborIndex]) continue;
+      cameFrom[neighborIndex] = currentIndex;
+      gScore[neighborIndex] = tentative;
+      fScore[neighborIndex] = tentative + Math.abs(nx - toCell.cx) + Math.abs(ny - toCell.cy);
+      if (!openSet[neighborIndex]) {
+        openSet[neighborIndex] = 1;
+        open.push(neighborIndex);
       }
     }
   }
@@ -1077,7 +1121,7 @@ function buildPathPoints(fromCell, toCell, blocked) {
 }
 
 function updateEnemyPaths() {
-  const blocked = buildBlockedSet();
+  const blocked = buildBlockedGrid();
   const endCell = state.mapEndCell;
   if (!endCell) return;
   for (const enemy of state.enemies) {
@@ -1095,7 +1139,7 @@ function updateEnemyPaths() {
 }
 
 function recomputeGlobalPath(extraBlockedCell) {
-  const blocked = buildBlockedSet(extraBlockedCell);
+  const blocked = buildBlockedGrid(extraBlockedCell);
   const endCell = state.mapEndCell;
   if (!endCell) return false;
   const startCells = state.mapStartCells.length > 0 ? state.mapStartCells : [];
