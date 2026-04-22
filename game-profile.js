@@ -269,6 +269,30 @@
     return Number(entry?.kills ?? entry?.killed ?? entry?.enemiesKilled ?? entry?.score ?? 0);
   }
 
+  function findLeaderboardEntryForEmail(rows, email, metric = getLeaderboardState().metric) {
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!normalizedEmail) return null;
+    let best = null;
+    for (const row of rows || []) {
+      if (getLeaderboardEmail(row) !== normalizedEmail) continue;
+      if (!best || getLeaderboardMetricValue(row, metric) > getLeaderboardMetricValue(best, metric)) {
+        best = row;
+      }
+    }
+    return best;
+  }
+
+  function saveLocalLeaderboardEntry(entry, metric = getLeaderboardState().metric, shouldReplace = true, fallbackEntry = null) {
+    const email = getLeaderboardEmail(entry);
+    const entries = getSavedScoreboardEntries().filter((row) => getLeaderboardEmail(row) !== email);
+    const nextEntry = shouldReplace ? entry : (fallbackEntry || findLeaderboardEntryForEmail(getSavedScoreboardEntries(), email, metric));
+    if (nextEntry) {
+      entries.unshift(nextEntry);
+    }
+    persistSavedScoreboardEntries(entries);
+    return entries;
+  }
+
   function getLeaderboardLabel(metric = getLeaderboardState().metric) {
     if (metric === "towers") return "Towers Placed";
     if (metric === "waves") return "Waves Accomplished";
@@ -529,19 +553,60 @@
   async function uploadGameStats(enemiesKilled, towersPlaced, currentWave) {
     const entry = buildScoreEntry(enemiesKilled, towersPlaced, currentWave);
     const leaderboardState = getLeaderboardState();
+    const metric = leaderboardState.metric || "kills";
     const dbId = sanitizeAppwriteIdSafe(readStorageStringSafe("tdm_appwrite_realtime_database"), "");
     const collectionId = sanitizeAppwriteIdSafe(readStorageStringSafe("tdm_appwrite_realtime_collection"), "");
-    const localEntries = getSavedScoreboardEntries();
-    localEntries.unshift(entry);
-    persistSavedScoreboardEntries(localEntries);
+    const existingLocalEntry = findLeaderboardEntryForEmail(getSavedScoreboardEntries(), entry.email, metric);
+    const currentValue = getLeaderboardMetricValue(entry, metric);
+    let authoritativeEntry = findLeaderboardEntryForEmail(leaderboardState.rows, entry.email, metric);
+    let remoteEntry = authoritativeEntry;
+    try {
+      if (globalScope.appwriteClient && globalScope.appwriteApi?.Databases && dbId && collectionId && !remoteEntry && globalScope.appwriteApi?.Query) {
+        const databases = new globalScope.appwriteApi.Databases(globalScope.appwriteClient);
+        try {
+          const queryApi = globalScope.appwriteApi.Query;
+          const queries = [];
+          if (typeof queryApi.equal === "function") {
+            queries.push(queryApi.equal("email", entry.email));
+          }
+          if (typeof queryApi.limit === "function") {
+            queries.push(queryApi.limit(100));
+          }
+          const result = await databases.listDocuments(dbId, collectionId, queries);
+          const documents = Array.isArray(result?.documents) ? result.documents : [];
+          remoteEntry = findLeaderboardEntryForEmail(documents, entry.email, metric);
+          authoritativeEntry = remoteEntry || authoritativeEntry;
+        } catch {
+          remoteEntry = null;
+        }
+      }
+    } catch {
+      remoteEntry = null;
+    }
+    const existingValue = authoritativeEntry ? getLeaderboardMetricValue(authoritativeEntry, metric) : -Infinity;
+    const shouldReplace = !authoritativeEntry || currentValue > existingValue;
+    saveLocalLeaderboardEntry(entry, metric, shouldReplace, authoritativeEntry || existingLocalEntry);
     if (!globalScope.appwriteClient || !globalScope.appwriteApi?.Databases || !dbId || !collectionId) {
-      leaderboardState.rows = dedupeLeaderboardRows([entry, ...leaderboardState.rows], leaderboardState.metric).slice(0, 200);
+      if (shouldReplace) {
+        leaderboardState.rows = dedupeLeaderboardRows([entry, ...leaderboardState.rows], leaderboardState.metric).slice(0, 200);
+      }
       renderLeaderboard();
-      return entry;
+      return shouldReplace ? entry : (authoritativeEntry || existingLocalEntry || entry);
     }
     try {
       const databases = new globalScope.appwriteApi.Databases(globalScope.appwriteClient);
       const idFactory = globalScope.appwriteApi.ID;
+      if (remoteEntry) {
+        const remoteValue = getLeaderboardMetricValue(remoteEntry, metric);
+        if (currentValue > remoteValue) {
+          const documentId = String(remoteEntry.$id || remoteEntry.id || "").trim();
+          if (documentId) {
+            await databases.updateDocument(dbId, collectionId, documentId, entry);
+          }
+        }
+        await loadLeaderboardDocuments(leaderboardState.metric);
+        return currentValue > remoteValue ? entry : remoteEntry;
+      }
       const documentId = idFactory && typeof idFactory.unique === "function"
         ? idFactory.unique()
         : `score_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -552,9 +617,11 @@
       if (getUi().leaderboardStatus) {
         getUi().leaderboardStatus.textContent = `Score saved locally: ${error?.message || error}`;
       }
-      leaderboardState.rows = dedupeLeaderboardRows([entry, ...leaderboardState.rows], leaderboardState.metric).slice(0, 200);
+      if (shouldReplace) {
+        leaderboardState.rows = dedupeLeaderboardRows([entry, ...leaderboardState.rows], leaderboardState.metric).slice(0, 200);
+      }
       renderLeaderboard();
-      return entry;
+      return shouldReplace ? entry : (authoritativeEntry || existingLocalEntry || entry);
     }
   }
 
